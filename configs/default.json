@@ -11,10 +11,11 @@
   },
   "simulation": {
     "TIME_STEP": 0.002,
-    "LOOPS": 2,
+    "LOOPS": 200,
     "STEPS": 1000,
     "N_POLYMERS": 2,
     "DISTRIBUTION":"UNIFORM",
+    "TETHERED":true,
     "SHEAR": 3000,
     "SEED": 42
   },
