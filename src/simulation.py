@@ -129,14 +129,14 @@ def run_simulation(params,run_type):
         logging.info("Energy minimization.")
         for i in range(500):
             print(f"step {i + 1} of {500}", end='\r', flush=True)
-            system.part.writevtk(outdir + f"particles_prep{i:05d}.vtk")
+            # system.part.writevtk(outdir + f"particles_prep{i:05d}.vtk")
             system.integrator.run(STEPS)
 
     if run_type=="validation_coiling" or run_type=="test_gridsizes":
         logging.info("Energy minimization.")
         for i in range(10):
             print(f"step {i + 1} of {10}", end='\r', flush=True)
-            system.part.writevtk(outdir + f"particles_prep{i:05d}.vtk")
+            # system.part.writevtk(outdir + f"particles_prep{i:05d}.vtk")
             system.integrator.run(STEPS)
 
     system.integrator.set_vv()
@@ -190,9 +190,9 @@ def run_simulation(params,run_type):
 
     for i in range(int(LOOPS)):
         print(f"step {i + 1} of {int(LOOPS)}", end='\r', flush=True)
-        lbf.write_vtk_velocity(outdir + f"velocity_{i:05d}.vtk")
-        lbf.write_vtk_boundary(outdir + f"boundary_{i:05d}.vtk")
-        system.part.writevtk(outdir + f"particles_{i:05d}.vtk")
+        # lbf.write_vtk_velocity(outdir + f"velocity_{i:05d}.vtk")
+        # lbf.write_vtk_boundary(outdir + f"boundary_{i:05d}.vtk")
+        # system.part.writevtk(outdir + f"particles_{i:05d}.vtk")
         system.integrator.run(STEPS)
 
     end_time = time.time()

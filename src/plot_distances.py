@@ -3,11 +3,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Parent data folder
-base_root = "data"
+base_root = "data/test_grids"
 
 # List of grid size folders
 grid_folders = sorted(
-    [f for f in os.listdir(base_root) if f.startswith("test_gridsize_")]
+    [f for f in os.listdir(base_root) if f.startswith("grid_")]
 )
 
 # For consistent color/legend
@@ -17,7 +17,7 @@ plt.figure(figsize=(8, 5))
 
 # Loop through each grid size folder
 for grid_folder in grid_folders:
-    full_grid_path = os.path.join(base_root, grid_folder, "gamma_50")
+    full_grid_path = os.path.join(base_root, grid_folder)
     
     if not os.path.exists(full_grid_path):
         continue
@@ -64,4 +64,3 @@ plt.tight_layout()
 # Save plot
 plot_path = os.path.join(base_root, "avg_distance_vs_shear_and_grid.png")
 plt.savefig(plot_path, dpi=300)
-plt.show()
