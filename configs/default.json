@@ -10,8 +10,8 @@
     "VISC_dyn": 0.11
   },
   "simulation": {
-    "TIME_STEP": 0.002,
-    "LOOPS": 200,
+    "TIME_STEP": 0.00025,
+    "LOOPS": 800,
     "STEPS": 1000,
     "N_POLYMERS": 2,
     "DISTRIBUTION":"UNIFORM",
@@ -20,9 +20,9 @@
     "SEED": 42
   },
   "geometry": {
-    "BOX_Lx": 10,
+    "BOX_Lx": 14,
     "BOX_Ly": 8,
-    "BOX_Lz": 6,
+    "BOX_Lz": 4,
     "CYLINDER": false,
     "SPHERE": false,
     "RADIUS_OBJECT": 3,

@@ -14,6 +14,7 @@ def add_dependent_parameters(config, LJ_strength=1):
     config["physical"]["sigma"] = (2 ** (-1/6)) * config["physical"]["r_0"]
     config["physical"]["epsilon"] = LJ_strength * 4 * config["physical"]["KT"]
     config["physical"]["cutoff"] = 8 * config["physical"]["a"]
+    # Compute velocity (in MD units, i.e. 1e2 m/s )
     config["simulation"]["VELOCITY"] = config["simulation"]["SHEAR"] * 1e-4 * (config["geometry"]["BOX_Lz"] - config["geometry"]["AGRID"])
 
 def compute_start_positions(config):
@@ -38,7 +39,7 @@ def compute_start_positions(config):
         random_x, random_y = filtered_points.T
 
     elif n_polymers == 1:
-        random_x = np.array([box_lx / 4])
+        random_x = np.array([box_lx / 5])
         random_y = np.array([box_ly / 2])
     
     elif n_polymers == 2:
@@ -69,11 +70,7 @@ def add_polymer_positions(config, run_type):
     min_monomers = config["simulation"].get("MIN_MONOMERS", 25)
     std_dev = config["simulation"].get("STD_MONOMERS", 10)
 
-    if run_type=="test_gridsizes" or run_type=="validation_coiling":
-        std_dev_monomer_direction = 0.5
-
-    if run_type=="validation_uncoiling":
-        std_dev_monomer_direction = 2
+    std_dev_monomer_direction = 0.5
 
     if distribution_type == "UNIFORM":
         monomer_counts = np.full(N_POLYMERS, N_MONOMERS, dtype=int)
@@ -130,23 +127,24 @@ def add_config_from_args_gridsize(config, shear, n_polymers, gridsize):
     config["simulation"]["N_POLYMERS"] = n_polymers
     steps = config["simulation"]["STEPS"]
     total_time = 0.1 # seconds
+    total_time_energy_minimzation = 0.02 # seconds
     time_unit = 1e-4
     total_sim_time = total_time / time_unit
 
     if gridsize==1:
-        time_step = 0.002
-        config["simulation"]["TIME_STEP"] = time_step
-        LOOPS = total_sim_time / (time_step * steps)
-        config["simulation"]["LOOPS"] = LOOPS
-
-    if gridsize==0.5:
         time_step = 0.001
         config["simulation"]["TIME_STEP"] = time_step
         LOOPS = total_sim_time / (time_step * steps)
         config["simulation"]["LOOPS"] = LOOPS
 
-    if gridsize==0.25:
+    if gridsize==0.5:
         time_step = 0.00025
+        config["simulation"]["TIME_STEP"] = time_step
+        LOOPS = total_sim_time / (time_step * steps)
+        config["simulation"]["LOOPS"] = LOOPS
+
+    if gridsize==0.25:
+        time_step = 0.000125
         config["simulation"]["TIME_STEP"] = time_step
         LOOPS = total_sim_time / (time_step * steps)
         config["simulation"]["LOOPS"] = LOOPS
@@ -163,7 +161,7 @@ if __name__ == "__main__":
 
         add_config_from_args_gridsize(config, shear, n_polymers, gridsize)
         add_dependent_parameters(config, LJ_strength=1)
-        config["output"]["DIRECTORY"] = f"./data/test_grids/grid_{int(gridsize*100):05d}/shear_{int(shear):05d}/"
+        config["output"]["DIRECTORY"] = f"./data/test_grids/grid_{int(gridsize*1e2):05d}/shear_{int(shear):05d}/"
         add_polymer_positions(config, run_type)
 
     if run_type == "validation_uncoiling":
@@ -174,7 +172,7 @@ if __name__ == "__main__":
 
         add_config_from_args_validation(config, shear, n_polymers, gamma)
         add_dependent_parameters(config, LJ_strength)
-        config["output"]["DIRECTORY"] = f"./data/val_uncoil/LJ_{int(LJ_strength*100):05d}/gamma_{int(gamma*10000):05d}/shear_{int(shear):05d}/"
+        config["output"]["DIRECTORY"] = f"./data/validation_uncoil/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}/"
         add_polymer_positions(config, run_type)
     
     if run_type == "validation_coiling":
@@ -185,7 +183,7 @@ if __name__ == "__main__":
 
         add_config_from_args_validation(config, shear, n_polymers, gamma)
         add_dependent_parameters(config, LJ_strength)
-        config["output"]["DIRECTORY"] = f"./data/val_coil/LJ_{int(LJ_strength*100):05d}/gamma_{int(gamma*10000):05d}/"
+        config["output"]["DIRECTORY"] = f"./data/validation_coil/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/"
         add_polymer_positions(config, run_type)
     
     lbf, forces, positions = run_simulation(config,run_type)

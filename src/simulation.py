@@ -17,8 +17,9 @@ logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 def build_polymers(system, run_type, n_monomers, n_polymers, start_positions, positions, fene, bond_length, TETHERED=True):
 
     if run_type=="validation_uncoiling":
+        logging.info("Building coiled up linear polymer (validation uncoiling).")
         positions = espressomd.polymer.linear_polymer_positions(n_polymers=n_polymers, 
-            beads_per_chain=n_monomers, start_positions=start_positions, respect_constraints=True, bond_angle=180,
+            beads_per_chain=n_monomers, start_positions=start_positions, respect_constraints=True,
             bond_length=bond_length, seed=23)
     
     for j in range(n_polymers):
@@ -44,7 +45,7 @@ def run_simulation(params,run_type):
     geom = params["geometry"]
     fluid = params["fluid"]
     out = params["output"]
-    print(params)
+
     # Geometry and runtime
     BOX_Lx, BOX_Ly, BOX_Lz = geom["BOX_Lx"], geom["BOX_Ly"], geom["BOX_Lz"]
     AGRID = geom["AGRID"]
@@ -55,7 +56,7 @@ def run_simulation(params,run_type):
     START_POSITIONS = sim["START_POSITIONS"]
     TETHERED = sim["TETHERED"]
     SHEAR = sim["SHEAR"] * 1e-4  # Convert units if needed
-    print(sim["MONOMER_COUNTS"])
+    # print(sim["MONOMER_COUNTS"])
 
     # Physical parameters
     KT = phys["KT"]
@@ -74,15 +75,17 @@ def run_simulation(params,run_type):
     radius_object = geom.get("RADIUS_OBJECT", 3)
 
     VELOCITY = SHEAR * (BOX_Lz - AGRID)
+    VELOCITY2 = sim["VELOCITY"]
     outdir = DIRECTORY + f'vtk_data/'
     os.makedirs(outdir, exist_ok=True)
 
-    logging.info(f"Running simulation: shear={SHEAR*10000}, n_polymers={N_POLYMERS}, n_monomers={N_MONOMERS}, gridsize={AGRID}, timestep={TIME_STEP}")
+    logging.info(f"Running simulation: shear={int(SHEAR*1e4)}, n_polymers={N_POLYMERS}, n_monomers={N_MONOMERS}, gridsize={AGRID}, timestep={TIME_STEP}")
+    logging.info(f"Running simulation: VELOCITY={VELOCITY}, VELOCITY={VELOCITY2}")
 
     system = espressomd.System(box_l=[BOX_Lx, BOX_Ly, BOX_Lz], periodicity=[True, True, False])
     
-    print("Total ranks:", system.cell_system.get_state()["n_nodes"])
-    print(system.cell_system.get_state())
+    # print("Total ranks:", system.cell_system.get_state()["n_nodes"])
+    # print(system.cell_system.get_state())
 
     system.cell_system.skin = 0.4
     system.time_step = TIME_STEP
@@ -113,16 +116,19 @@ def run_simulation(params,run_type):
         system.constraints.add(particle_type=1, penetrable=False, shape=cylinder)
 
     # Polymers
+    logging.info("Build Polymer(s).")
     build_polymers(system, run_type, N_MONOMERS, N_POLYMERS, START_POSITIONS, POSITIONS, fene, r_0, TETHERED)
     system.non_bonded_inter[0, 1].soft_sphere.set_params(a=1e-3, n=1.2, offset=0, cutoff=2 * phys["a"])
     
     # Minimization and integrator
-    system.integrator.set_steepest_descent(f_max=0, gamma=GAMMA, max_displacement=0.001 * sigma)
+    # what value for gamma is suited here?
+    # system.integrator.set_steepest_descent(f_max=0, gamma=GAMMA, max_displacement=0.001 * sigma)
+    system.integrator.set_steepest_descent(f_max=AGRID/100, gamma=0.01, max_displacement=0.001 * sigma)
 
     if run_type=="validation_uncoiling":
         logging.info("Energy minimization.")
-        for i in range(200):
-            print(f"step {i + 1} of {200}", end='\r', flush=True)
+        for i in range(500):
+            print(f"step {i + 1} of {500}", end='\r', flush=True)
             system.part.writevtk(outdir + f"particles_prep{i:05d}.vtk")
             system.integrator.run(STEPS)
 
@@ -149,7 +155,7 @@ def run_simulation(params,run_type):
         lb_boundary_down = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_down_lb, velocity=[0, 0, 0]))
     
     if run_type=="validation_uncoiling" or run_type=="test_gridsizes":
-        logging.info("LB setup for uncoiling validation (nonzero fluid velocity)")
+        logging.info(f"LB setup for uncoiling validation (nonzero fluid velocity)")
         lb_boundary_up = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_up_lb, velocity=[0, 0, 0]))
         lb_boundary_down = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_down_lb, velocity=[VELOCITY, 0, 0]))
     
