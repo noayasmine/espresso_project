@@ -17,7 +17,9 @@
     "DISTRIBUTION":"UNIFORM",
     "TETHERED":true,
     "SHEAR": 3000,
-    "SEED": 42
+    "SEED": 42,
+    "SAVE_VTK":false,
+    "MINIMIZATION_STEPS":200
   },
   "geometry": {
     "BOX_Lx": 14,

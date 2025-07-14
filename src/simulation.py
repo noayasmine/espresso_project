@@ -20,7 +20,7 @@ def build_polymers(system, run_type, n_monomers, n_polymers, start_positions, po
         logging.info("Building coiled up linear polymer (validation uncoiling).")
         positions = espressomd.polymer.linear_polymer_positions(n_polymers=n_polymers, 
             beads_per_chain=n_monomers, start_positions=start_positions, respect_constraints=True,
-            bond_length=bond_length, seed=23)
+            bond_length=bond_length, seed=42)
     
     for j in range(n_polymers):
         p_previous = None
@@ -56,6 +56,9 @@ def run_simulation(params,run_type):
     START_POSITIONS = sim["START_POSITIONS"]
     TETHERED = sim["TETHERED"]
     SHEAR = sim["SHEAR"] * 1e-4  # Convert units if needed
+    save_VTK = sim["SAVE_VTK"]
+    # minimization_steps = int(100 * (1 / AGRID) ** 2)
+    minimization_steps = sim["MINIMIZATION_STEPS"]
     # print(sim["MONOMER_COUNTS"])
 
     # Physical parameters
@@ -77,7 +80,8 @@ def run_simulation(params,run_type):
     VELOCITY = SHEAR * (BOX_Lz - AGRID)
     VELOCITY2 = sim["VELOCITY"]
     outdir = DIRECTORY + f'vtk_data/'
-    os.makedirs(outdir, exist_ok=True)
+    if save_VTK:
+        os.makedirs(outdir, exist_ok=True)
 
     logging.info(f"Running simulation: shear={int(SHEAR*1e4)}, n_polymers={N_POLYMERS}, n_monomers={N_MONOMERS}, gridsize={AGRID}, timestep={TIME_STEP}")
     logging.info(f"Running simulation: VELOCITY={VELOCITY}, VELOCITY={VELOCITY2}")
@@ -85,7 +89,7 @@ def run_simulation(params,run_type):
     system = espressomd.System(box_l=[BOX_Lx, BOX_Ly, BOX_Lz], periodicity=[True, True, False])
     
     # print("Total ranks:", system.cell_system.get_state()["n_nodes"])
-    # print(system.cell_system.get_state())
+    print(system.cell_system.get_state())
 
     system.cell_system.skin = 0.4
     system.time_step = TIME_STEP
@@ -119,30 +123,54 @@ def run_simulation(params,run_type):
     logging.info("Build Polymer(s).")
     build_polymers(system, run_type, N_MONOMERS, N_POLYMERS, START_POSITIONS, POSITIONS, fene, r_0, TETHERED)
     system.non_bonded_inter[0, 1].soft_sphere.set_params(a=1e-3, n=1.2, offset=0, cutoff=2 * phys["a"])
-    
+
+    particle_ids = [p.id for p in system.part.select(type=0)]
+    forces = espressomd.observables.ParticleForces(ids=particle_ids)
+    part_pos = espressomd.observables.ParticlePositions(ids=particle_ids)
+    accumulator_forces = espressomd.accumulators.TimeSeries(obs=forces, delta_N=STEPS)
+    accumulator_positions = espressomd.accumulators.TimeSeries(obs=part_pos, delta_N=STEPS)
+    system.auto_update_accumulators.add(accumulator_forces)
+    system.auto_update_accumulators.add(accumulator_positions)
+
     # Minimization and integrator
     # what value for gamma is suited here?
     # system.integrator.set_steepest_descent(f_max=0, gamma=GAMMA, max_displacement=0.001 * sigma)
-    system.integrator.set_steepest_descent(f_max=AGRID/100, gamma=0.01, max_displacement=0.001 * sigma)
+    system.integrator.set_steepest_descent(f_max=0, gamma=0.001, max_displacement=0.0001 * sigma)
 
     if run_type=="validation_uncoiling":
         logging.info("Energy minimization.")
-        for i in range(500):
-            print(f"step {i + 1} of {500}", end='\r', flush=True)
-            # system.part.writevtk(outdir + f"particles_prep{i:05d}.vtk")
-            system.integrator.run(STEPS)
+
+        if save_VTK:
+            for i in range(500):
+                print(f"step {i + 1} of {500}", end='\r', flush=True)
+                system.part.writevtk(outdir + f"particles_prep{i:05d}.vtk")
+                system.integrator.run(STEPS)
+
+        if not save_VTK:
+            for i in range(500):
+                print(f"step {i + 1} of {500}", end='\r', flush=True)
+                system.integrator.run(STEPS)
+
 
     if run_type=="validation_coiling" or run_type=="test_gridsizes":
         logging.info("Energy minimization.")
-        for i in range(10):
-            print(f"step {i + 1} of {10}", end='\r', flush=True)
-            # system.part.writevtk(outdir + f"particles_prep{i:05d}.vtk")
-            system.integrator.run(STEPS)
+
+        if save_VTK:
+            for i in range(minimization_steps):
+                print(f"step {i + 1} of {minimization_steps}", end='\r', flush=True)
+                system.part.writevtk(outdir + f"particles_prep{i:05d}.vtk")
+                system.integrator.run(STEPS)
+
+        if not save_VTK:
+            for i in range(minimization_steps):
+                print(f"step {i + 1} of {minimization_steps}", end='\r', flush=True)
+                system.integrator.run(STEPS)
 
     system.integrator.set_vv()
 
     # LB Fluid setup
-    lbf = espressomd.lb.LBFluid(kT=0, seed=42, agrid=AGRID, dens=DENS, visc=VISC, tau=TIME_STEP)
+    # lbf = espressomd.lb.LBFluid(kT=0, seed=42, agrid=AGRID, dens=DENS, visc=VISC, tau=TIME_STEP)
+    lbf = espressomd.lb.LBFluid(kT=0, seed=42, agrid=AGRID, dens=DENS, visc=VISC, tau=TIME_STEP*5)
     system.actors.add(lbf)
     system.thermostat.set_lb(LB_fluid=lbf, gamma=GAMMA, seed=42)
 
@@ -160,13 +188,13 @@ def run_simulation(params,run_type):
         lb_boundary_down = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_down_lb, velocity=[VELOCITY, 0, 0]))
     
     # Observables
-    particle_ids = [p.id for p in system.part.select(type=0)]
-    forces = espressomd.observables.ParticleForces(ids=particle_ids)
-    part_pos = espressomd.observables.ParticlePositions(ids=particle_ids)
-    accumulator_forces = espressomd.accumulators.TimeSeries(obs=forces, delta_N=1)
-    accumulator_positions = espressomd.accumulators.TimeSeries(obs=part_pos, delta_N=1)
-    system.auto_update_accumulators.add(accumulator_forces)
-    system.auto_update_accumulators.add(accumulator_positions)
+    # particle_ids = [p.id for p in system.part.select(type=0)]
+    # forces = espressomd.observables.ParticleForces(ids=particle_ids)
+    # part_pos = espressomd.observables.ParticlePositions(ids=particle_ids)
+    # accumulator_forces = espressomd.accumulators.TimeSeries(obs=forces, delta_N=STEPS)
+    # accumulator_positions = espressomd.accumulators.TimeSeries(obs=part_pos, delta_N=STEPS)
+    # system.auto_update_accumulators.add(accumulator_forces)
+    # system.auto_update_accumulators.add(accumulator_positions)
 
     # for i in range(500):
     #     print(f"step {i + 1} of {500}", end='\r', flush=True)
@@ -188,12 +216,18 @@ def run_simulation(params,run_type):
     logging.info("Run simulation.")
     start_time = time.time()
 
-    for i in range(int(LOOPS)):
-        print(f"step {i + 1} of {int(LOOPS)}", end='\r', flush=True)
-        # lbf.write_vtk_velocity(outdir + f"velocity_{i:05d}.vtk")
-        # lbf.write_vtk_boundary(outdir + f"boundary_{i:05d}.vtk")
-        # system.part.writevtk(outdir + f"particles_{i:05d}.vtk")
-        system.integrator.run(STEPS)
+    if save_VTK:
+        for i in range(int(LOOPS)):
+            print(f"step {i + 1} of {int(LOOPS)}", end='\r', flush=True)
+            lbf.write_vtk_velocity(outdir + f"velocity_{i:05d}.vtk")
+            lbf.write_vtk_boundary(outdir + f"boundary_{i:05d}.vtk")
+            system.part.writevtk(outdir + f"particles_{i:05d}.vtk")
+            system.integrator.run(STEPS)
+
+    if not save_VTK:
+        for i in range(int(LOOPS)):
+            print(f"step {i + 1} of {int(LOOPS)}", end='\r', flush=True)
+            system.integrator.run(STEPS)
 
     end_time = time.time()
     print(f"Total runtime: {end_time - start_time:.2f} seconds")

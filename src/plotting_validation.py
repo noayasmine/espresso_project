@@ -100,7 +100,7 @@ def plot_extension_over_time(base_dir, config):
                 extension = np.linalg.norm(positions[:, -1, :] - positions[:, 0, :], axis=1)
                 normalized_extension = extension / max_extension
 
-                time = np.arange(len(extension)) * config["simulation"]["TIME_STEP"] * config["simulation"]["STEPS"]
+                time = np.arange(len(extension)) * config["simulation"]["TIME_STEP"] * 1e-4
                 label = f"{lj_dir}, γ={gamma_value:.4f}"
                 plt.plot(time, normalized_extension, label=label)
             except Exception as e:

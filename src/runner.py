@@ -116,72 +116,67 @@ def add_polymer_positions(config, run_type):
     config["simulation"]["POSITIONS"] = positions
     config["simulation"]["MONOMER_COUNTS"] = monomer_counts.tolist()
 
-def add_config_from_args_validation(config, shear, n_polymers, gamma):
-    config["simulation"]["SHEAR"] = shear
-    config["simulation"]["N_POLYMERS"] = n_polymers
-    config["physical"]["GAMMA"] = gamma
-
-def add_config_from_args_gridsize(config, shear, n_polymers, gridsize):
-    config["geometry"]["AGRID"] = gridsize
-    config["simulation"]["SHEAR"] = shear
-    config["simulation"]["N_POLYMERS"] = n_polymers
+def add_timeloops_from_gridsize(config):
     steps = config["simulation"]["STEPS"]
+    gridsize = config["geometry"]["AGRID"]
     total_time = 0.1 # seconds
-    total_time_energy_minimzation = 0.02 # seconds
-    time_unit = 1e-4
+    time_unit = 1e-4 # seconds
     total_sim_time = total_time / time_unit
-
+    
     if gridsize==1:
         time_step = 0.001
-        config["simulation"]["TIME_STEP"] = time_step
-        LOOPS = total_sim_time / (time_step * steps)
-        config["simulation"]["LOOPS"] = LOOPS
 
     if gridsize==0.5:
-        time_step = 0.00025
-        config["simulation"]["TIME_STEP"] = time_step
-        LOOPS = total_sim_time / (time_step * steps)
-        config["simulation"]["LOOPS"] = LOOPS
+        time_step = 0.000125
 
     if gridsize==0.25:
-        time_step = 0.000125
-        config["simulation"]["TIME_STEP"] = time_step
-        LOOPS = total_sim_time / (time_step * steps)
-        config["simulation"]["LOOPS"] = LOOPS
+        time_step = 0.000015625
+    
+    config["simulation"]["TIME_STEP"] = time_step
+    LOOPS = total_sim_time / (time_step * steps)
+    config["simulation"]["LOOPS"] = LOOPS
+    
+    print(f"For gridsize={gridsize}, loops={LOOPS}, steps={steps}")
     
 if __name__ == "__main__":
     path = "configs/default.json"
     config = load_config(path)
     run_type = str(sys.argv[1])
-
+    np.random.seed(config["simulation"]["SEED"])
+    
     if run_type == "test_gridsizes":
-        shear = float(sys.argv[2])
-        n_polymers = int(sys.argv[3])
-        gridsize = float(sys.argv[4])
+        config["simulation"]["SHEAR"] = float(sys.argv[2])
+        config["simulation"]["N_POLYMERS"] = int(sys.argv[3])
+        config["geometry"]["AGRID"] = float(sys.argv[4])
+        shear = config["simulation"]["SHEAR"]
+        gridsize = config["geometry"]["AGRID"]
 
-        add_config_from_args_gridsize(config, shear, n_polymers, gridsize)
+        add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength=1)
         config["output"]["DIRECTORY"] = f"./data/test_grids/grid_{int(gridsize*1e2):05d}/shear_{int(shear):05d}/"
         add_polymer_positions(config, run_type)
 
     if run_type == "validation_uncoiling":
-        shear = float(sys.argv[2])
-        n_polymers = int(sys.argv[3])
-        gamma = float(sys.argv[4])
+        config["simulation"]["SHEAR"] = float(sys.argv[2])
+        config["simulation"]["N_POLYMERS"] = int(sys.argv[3])
+        config["physical"]["GAMMA"] = float(sys.argv[4])
+        shear = config["simulation"]["SHEAR"]
+        gamma = config["physical"]["GAMMA"]
         LJ_strength = float(sys.argv[5])
 
-        add_config_from_args_validation(config, shear, n_polymers, gamma)
+        add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
         config["output"]["DIRECTORY"] = f"./data/validation_uncoil/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}/"
         add_polymer_positions(config, run_type)
     
     if run_type == "validation_coiling":
-        shear = float(sys.argv[2])
-        n_polymers = int(sys.argv[3])
-        gamma = float(sys.argv[4])
+        config["simulation"]["SHEAR"] = float(sys.argv[2])
+        config["simulation"]["N_POLYMERS"] = int(sys.argv[3])
+        config["physical"]["GAMMA"] = float(sys.argv[4])
+        gamma = config["physical"]["GAMMA"]
         LJ_strength = float(sys.argv[5])
 
-        add_config_from_args_validation(config, shear, n_polymers, gamma)
+        add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
         config["output"]["DIRECTORY"] = f"./data/validation_coil/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/"
         add_polymer_positions(config, run_type)

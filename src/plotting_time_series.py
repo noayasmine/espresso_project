@@ -4,16 +4,9 @@ import os
 import re
 import json
 
-def load_config(path):
-    abs_path = os.path.abspath(os.path.join("..", path))
-    with open(abs_path) as f:
-        return json.load(f)
-
-def plot_simulation_results(base_dir):
+def plot_simulation_results(config, base_dir, plot_type):
     print(f"Plotting simulation results from directory: {base_dir}")
-    path = "configs/default.json"
-    config = load_config(path)
-    base_dir = base_dir
+
     variable = "shear"
     max_extension = config["physical"]["N_MONOMERS"] * 2 * config["physical"]["a"] 
     AGRID = config["geometry"]["AGRID"]
@@ -21,9 +14,7 @@ def plot_simulation_results(base_dir):
 
     dirs = [d for d in os.listdir(base_dir) if re.match(rf"{variable}_\d+.\d+", d)]
 
-    plots = ["extension"]
-
-    if "velocity_profile" in plots:
+    if plot_type=="velocity_profile":
         plt.figure(figsize=(12, 6))
         for folder in dirs:
             data_dir = os.path.join(base_dir, folder)
@@ -44,7 +35,6 @@ def plot_simulation_results(base_dir):
                 print(f"Skipping {folder}: missing data files.")
                 continue
 
-        
             calculated_shear = (vprofile[int(len(vprofile)-1)] - vprofile[0])/(len(z_pos)-(AGRID/0.1 + 1)) * 1e5
             label_shear = f"shear {round(calculated_shear)} 1/s" 
 
@@ -57,7 +47,7 @@ def plot_simulation_results(base_dir):
         plt.legend()
         plt.show()
 
-    if "extension" in plots:
+    if plot_type=="extension":
         plt.figure(figsize=(12, 6))
         for folder in dirs:
             data_dir = os.path.join(base_dir, folder)
@@ -89,7 +79,7 @@ def plot_simulation_results(base_dir):
         plt.legend()
         plt.show()
 
-    if "force" in plots:
+    if plot_type=="force":
         plt.figure(figsize=(12, 6))
         for folder in dirs:
             data_dir = os.path.join(base_dir, folder)

@@ -4,10 +4,6 @@ import os
 import re
 import json
 
-def load_config(path):
-    with open(path) as f:
-        return json.load(f)
-
 def compute_avg_polymer_distance(npz_path, n_polymers=2, monomers_per_polymer=30):
     try:
         data = np.load(npz_path)
@@ -35,13 +31,14 @@ def compute_avg_polymer_distance(npz_path, n_polymers=2, monomers_per_polymer=30
         print(f"Error processing {npz_path}: {e}")
         return None
 
-def plot_grid_results(config_path, base_dir):
+def plot_grid_results(config, base_dir):
     plt.figure(figsize=(12, 6))
-    config = load_config(config_path)
 
     grid_pattern = re.compile(r"grid_(\d+)")
     shear_pattern = re.compile(r"shear_(\d+)")
 
+    STEPS = config["simulation"]["STEPS"]
+    
     for grid_folder in sorted(os.listdir(base_dir)):
         grid_match = grid_pattern.match(grid_folder)
         if not grid_match:
@@ -49,6 +46,14 @@ def plot_grid_results(config_path, base_dir):
 
         grid_value = int(grid_match.group(1)) / 100.0
         grid_path = os.path.join(base_dir, grid_folder)
+        if grid_value==1:
+            TIMESTEP = 0.001
+
+        if grid_value==0.5:
+            TIMESTEP = 0.000125
+
+        if grid_value==0.25:
+            TIMESTEP = 0.000015625
 
         for shear_folder in sorted(os.listdir(grid_path)):
             shear_match = shear_pattern.match(shear_folder)
@@ -62,11 +67,14 @@ def plot_grid_results(config_path, base_dir):
             print(f"Processing: gridsize={grid_value}, shear={shear_value}")
 
             avg_distances = compute_avg_polymer_distance(npz_path)
-            if avg_distances is not None:
+            if avg_distances is not None and shear_value==1000:
                 label = f"grid={grid_value}, shear={shear_value}"
-                plt.plot(avg_distances, label=label)
 
-    plt.xlabel("Timestep")
+                dt = 1e-4 * TIMESTEP * STEPS  # seconds per timestep
+                time_s = np.arange(len(avg_distances)) * dt
+                plt.plot(time_s, avg_distances, label=label)
+
+    plt.xlabel("Time [s]")
     plt.ylabel("Avg. distance between polymers")
     plt.title("Polymer separation over time")
     plt.legend(fontsize='small', loc='upper right')
