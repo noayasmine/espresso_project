@@ -215,7 +215,7 @@ def run_simulation(params,run_type):
     # Main simulation loop
     logging.info("Run simulation.")
     start_time = time.time()
-
+ 
     if save_VTK:
         for i in range(int(LOOPS)):
             print(f"step {i + 1} of {int(LOOPS)}", end='\r', flush=True)

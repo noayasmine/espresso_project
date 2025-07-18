@@ -19,10 +19,12 @@ def add_dependent_parameters(config, LJ_strength=1):
 
 def compute_start_positions(config):
     n_polymers = config["simulation"]["N_POLYMERS"]
+    a = config["physical"]["a"]
     agrid = config["geometry"]["AGRID"]
     box_lx = config["geometry"]["BOX_Lx"]
     box_ly = config["geometry"]["BOX_Ly"]
     radius = config["geometry"]["RADIUS_OBJECT"] - agrid / 2
+    
     center = np.array([box_lx / 4, box_ly / 2])
     spacing = 0.3
 
@@ -53,7 +55,7 @@ def compute_start_positions(config):
         random_y = np.random.uniform(agrid, box_ly - agrid, n_polymers)
 
     # Place monomers just above the wall
-    z = np.full(n_polymers, 0.5 * agrid + 0.001)
+    z = np.full(n_polymers, 0.5 * agrid + a/2)
 
     start_positions = np.stack([random_x, random_y, z], axis=1)
     config["simulation"]["START_POSITIONS"] = start_positions
@@ -122,38 +124,33 @@ def add_timeloops_from_gridsize(config):
     total_time = 0.1 # seconds
     time_unit = 1e-4 # seconds
     total_sim_time = total_time / time_unit
-    
-    if gridsize==1:
-        time_step = 0.001
-
-    if gridsize==0.5:
-        time_step = 0.000125
-
-    if gridsize==0.25:
-        time_step = 0.000015625
+    time_step = config["simulation"]["TIME_STEP"] * gridsize ** 3
     
     config["simulation"]["TIME_STEP"] = time_step
     LOOPS = total_sim_time / (time_step * steps)
     config["simulation"]["LOOPS"] = LOOPS
     
-    print(f"For gridsize={gridsize}, loops={LOOPS}, steps={steps}")
+    print(f"gridsize={gridsize}, loops={LOOPS}, steps={steps}")
     
 if __name__ == "__main__":
     path = "configs/default.json"
     config = load_config(path)
     run_type = str(sys.argv[1])
-    np.random.seed(config["simulation"]["SEED"])
-    
+    # np.random.seed(config["simulation"]["SEED"])
+
     if run_type == "test_gridsizes":
         config["simulation"]["SHEAR"] = float(sys.argv[2])
         config["simulation"]["N_POLYMERS"] = int(sys.argv[3])
         config["geometry"]["AGRID"] = float(sys.argv[4])
+        run = int(sys.argv[5])
+        config["simulation"]["SEED"] = run
         shear = config["simulation"]["SHEAR"]
         gridsize = config["geometry"]["AGRID"]
+        np.random.seed(config["simulation"]["SEED"])
 
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength=1)
-        config["output"]["DIRECTORY"] = f"./data/test_grids/grid_{int(gridsize*1e2):05d}/shear_{int(shear):05d}/"
+        config["output"]["DIRECTORY"] = f"./data/test_grids/grid_{int(gridsize*1e2):05d}/shear_{int(shear):05d}/run_{run}"
         add_polymer_positions(config, run_type)
 
     if run_type == "validation_uncoiling":
@@ -166,19 +163,19 @@ if __name__ == "__main__":
 
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
-        config["output"]["DIRECTORY"] = f"./data/validation_uncoil/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}/"
+        config["output"]["DIRECTORY"] = f"./data/validation_uncoil/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}"
         add_polymer_positions(config, run_type)
     
     if run_type == "validation_coiling":
         config["simulation"]["SHEAR"] = float(sys.argv[2])
         config["simulation"]["N_POLYMERS"] = int(sys.argv[3])
-        config["physical"]["GAMMA"] = float(sys.argv[4])
-        gamma = config["physical"]["GAMMA"]
+        gamma = float(sys.argv[4])
         LJ_strength = float(sys.argv[5])
-
+        config["physical"]["GAMMA"] = gamma
+        
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
-        config["output"]["DIRECTORY"] = f"./data/validation_coil/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/"
+        config["output"]["DIRECTORY"] = f"./data/validation_coil/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}"
         add_polymer_positions(config, run_type)
     
     lbf, forces, positions = run_simulation(config,run_type)
