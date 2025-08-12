@@ -13,6 +13,13 @@ import time
 
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
+def update_moving_average(buffer, new_value, window_size):
+    """Update list buffer with new_value and return mean over window."""
+    buffer.append(new_value)
+    if len(buffer) > window_size:
+        buffer.pop(0)  # remove oldest
+    return np.mean(buffer, axis=0)
+
 
 def build_polymers(system, run_type, n_monomers, n_polymers, start_positions, positions, fene, bond_length, TETHERED=True):
 
@@ -127,6 +134,7 @@ def run_simulation(params,run_type):
     particle_ids = [p.id for p in system.part.select(type=0)]
     forces = espressomd.observables.ParticleForces(ids=particle_ids)
     part_pos = espressomd.observables.ParticlePositions(ids=particle_ids)
+
     accumulator_forces = espressomd.accumulators.TimeSeries(obs=forces, delta_N=STEPS)
     accumulator_positions = espressomd.accumulators.TimeSeries(obs=part_pos, delta_N=STEPS)
     system.auto_update_accumulators.add(accumulator_forces)
@@ -141,14 +149,14 @@ def run_simulation(params,run_type):
         logging.info("Energy minimization.")
 
         if save_VTK:
-            for i in range(500):
-                print(f"step {i + 1} of {500}", end='\r', flush=True)
+            for i in range(minimization_steps):
+                print(f"step {i + 1} of {minimization_steps}", end='\r', flush=True)
                 system.part.writevtk(outdir + f"particles_prep{i:05d}.vtk")
                 system.integrator.run(STEPS)
 
         if not save_VTK:
-            for i in range(500):
-                print(f"step {i + 1} of {500}", end='\r', flush=True)
+            for i in range(minimization_steps):
+                print(f"step {i + 1} of {minimization_steps}", end='\r', flush=True)
                 system.integrator.run(STEPS)
 
 
@@ -215,7 +223,8 @@ def run_simulation(params,run_type):
     # Main simulation loop
     logging.info("Run simulation.")
     start_time = time.time()
- 
+    WINDOW_FRAMES = 10
+
     if save_VTK:
         for i in range(int(LOOPS)):
             print(f"step {i + 1} of {int(LOOPS)}", end='\r', flush=True)
@@ -228,6 +237,10 @@ def run_simulation(params,run_type):
         for i in range(int(LOOPS)):
             print(f"step {i + 1} of {int(LOOPS)}", end='\r', flush=True)
             system.integrator.run(STEPS)
+            forces_all = accumulator_forces.time_series()
+            F_avg = np.mean(forces_all[-WINDOW_FRAMES:], axis=0)
+
+
 
     end_time = time.time()
     print(f"Total runtime: {end_time - start_time:.2f} seconds")

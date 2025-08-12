@@ -23,7 +23,6 @@ base_dir_validation_coil = "/gpfs/home4/nroebersen/espresso_project/data/validat
 
 # plot_extension_over_time(base_dir_validation_coil, config)
 
-
 base_dir_grids = "/gpfs/home4/nroebersen/espresso_project/data/test_grids_single_runs/"
 # plot_grid_results(config, base_dir_grids)
 
@@ -31,6 +30,54 @@ base_dir_validation_uncoil = "/gpfs/home4/nroebersen/espresso_project/data/valid
 # plot_simulation_results(config, base_dir_validation_uncoil, plot_type="extension")
 # plot_simulation_results(config, base_dir_validation_uncoil, plot_type="force")
 
-base_dir_grids_avg = "/gpfs/home4/nroebersen/espresso_project/data/test_grids/"
-plot_grid_results_avg(config, base_dir_grids_avg)
-plot_grid_results_avg(config, base_dir_grids_avg, plot_mode="individual")
+base_dir_grids_avg = "/gpfs/home4/nroebersen/espresso_project/data/test_grids_stdev010/"
+# plot_grid_results_avg(config, base_dir_grids_avg)
+
+base_dir_grids_avg = "/gpfs/home4/nroebersen/espresso_project/data/test_grids_stdev001/"
+# plot_grid_results_avg(config, base_dir_grids_avg)
+
+# plotting of the uncoiling dynamics of a chosen LJ strength for multiple values of gamma
+base_dir_uncoiling_single = "/gpfs/home4/nroebersen/espresso_project/data/validation_uncoil/LJ_00100/"
+plot_validation_results(config, base_dir_uncoiling_single)
+base_dir_uncoiling_single = "/gpfs/home4/nroebersen/espresso_project/data/validation_uncoil/LJ_00500/"
+plot_validation_results(config, base_dir_uncoiling_single)
+base_dir_uncoiling_single = "/gpfs/home4/nroebersen/espresso_project/data/validation_uncoil/LJ_01000/"
+plot_validation_results(config, base_dir_uncoiling_single)
+base_dir_uncoiling_single = "/gpfs/home4/nroebersen/espresso_project/data/validation_uncoil_10K/LJ_00100/"
+plot_validation_results(config, base_dir_uncoiling_single)
+base_dir_uncoiling_single = "/gpfs/home4/nroebersen/espresso_project/data/validation_uncoil_10K/LJ_00500/"
+plot_validation_results(config, base_dir_uncoiling_single)
+base_dir_uncoiling_single = "/gpfs/home4/nroebersen/espresso_project/data/validation_uncoil_100K/LJ_00100/"
+plot_validation_results(config, base_dir_uncoiling_single)
+base_dir_uncoiling_single = "/gpfs/home4/nroebersen/espresso_project/data/validation_uncoil_100K/LJ_00500/"
+plot_validation_results(config, base_dir_uncoiling_single)
+
+
+base_dir_uncoiling_time_series_single = "/gpfs/home4/nroebersen/espresso_project/data/validation_uncoil/LJ_00100/gamma_00050/"
+plot_simulation_results(config, base_dir_uncoiling_time_series_single, plot_type="extension")
+plot_simulation_results(config, base_dir_uncoiling_time_series_single, plot_type="force", target_shear=11000)
+
+base_dir_uncoiling_time_series_single = "/gpfs/home4/nroebersen/espresso_project/data/validation_uncoil/LJ_00500/gamma_00050/"
+plot_simulation_results(config, base_dir_uncoiling_time_series_single, plot_type="extension")
+plot_simulation_results(config, base_dir_uncoiling_time_series_single, plot_type="force", target_shear=11000)
+
+base_dir_uncoiling_time_series_single = "/gpfs/home4/nroebersen/espresso_project/data/validation_uncoil_10K/LJ_00100/gamma_00050/"
+plot_simulation_results(config, base_dir_uncoiling_time_series_single, plot_type="extension")
+plot_simulation_results(config, base_dir_uncoiling_time_series_single, plot_type="force", target_shear=11000)
+
+
+base_dir_uncoiling_time_series_single = "/gpfs/home4/nroebersen/espresso_project/data/validation_uncoil_10K/LJ_00500/gamma_00050/"
+plot_simulation_results(config, base_dir_uncoiling_time_series_single, plot_type="extension")
+plot_simulation_results(config, base_dir_uncoiling_time_series_single, plot_type="force", target_shear=11000)
+
+base_dir_uncoiling_time_series_single = "/gpfs/home4/nroebersen/espresso_project/data/validation_uncoil_10K/LJ_00700/gamma_00050/"
+plot_simulation_results(config, base_dir_uncoiling_time_series_single, plot_type="extension")
+plot_simulation_results(config, base_dir_uncoiling_time_series_single, plot_type="force", target_shear=11000)
+
+base_dir_uncoiling_time_series_single = "/gpfs/home4/nroebersen/espresso_project/data/validation_uncoil_100K/LJ_00100/gamma_00050/"
+plot_simulation_results(config, base_dir_uncoiling_time_series_single, plot_type="extension")
+plot_simulation_results(config, base_dir_uncoiling_time_series_single, plot_type="force", target_shear=11000)
+
+base_dir_uncoiling_time_series_single = "/gpfs/home4/nroebersen/espresso_project/data/validation_uncoil_100K/LJ_00500/gamma_00050/"
+plot_simulation_results(config, base_dir_uncoiling_time_series_single, plot_type="extension")
+plot_simulation_results(config, base_dir_uncoiling_time_series_single, plot_type="force", target_shear=11000)

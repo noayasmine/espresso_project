@@ -4,70 +4,124 @@ import os
 import re
 import json
 
+
 def plot_validation_results(config, base_dir):
-    plt.figure(figsize=(12, 6))
+
+    plt.style.use("seaborn-v0_8-whitegrid")
+    color_cycle = plt.get_cmap("tab10").colors
+
     variable = "shear"
     max_extension = config["physical"]["N_MONOMERS"] * 2 * config["physical"]["a"] 
-    dyn_visc = config["physical"]["VISC_dyn"]  # dyn/cm²
-    AGRID = config["geometry"]["AGRID"]
-    TIMESTEP = config["simulation"]["TIME_STEP"]
+    dyn_visc_SI = config["physical"]["VISC_dyn"] / 10
 
-    gamma_folders = [f for f in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, f))]
+    # Extract LJ strength from base_dir
+    lj_match = re.search(r"LJ_(\d{5})", base_dir)
+    if lj_match:
+        lj_strength = int(lj_match.group(1)) / 1e2
+        lj_title = f"Lennard Jones potential = {lj_strength:.2f} × 4kT"
+    else:
+        lj_title = "Lennard Jones potential = unknown"
 
-    gammas = []
-    for folder in gamma_folders:
-        match = re.match(r"gamma_(\d+)", folder)
-        if match:
-            gamma_value = int(match.group(1)) / 1e4  # convert back to float
-            gammas.append(gamma_value)
+    # Match folders like gamma_00050, gamma_00100, etc.
+    gamma_pattern = re.compile(r"gamma_(\d{5})")
+    gamma_folders = sorted([
+        f for f in os.listdir(base_dir)
+        if os.path.isdir(os.path.join(base_dir, f)) and gamma_pattern.match(f)
+    ])
 
-    gammas.sort()
+    fig, ax = plt.subplots(figsize=(10, 6))
 
-    for gamma in gammas:
-        gamma_folder = f"{base_dir}gamma_{int(gamma * 1e4)}"
-
-        if not os.path.exists(gamma_folder):
-            print("Folder does not exist")
+    for idx, gamma_folder_name in enumerate(gamma_folders):
+        match = gamma_pattern.match(gamma_folder_name)
+        if not match:
             continue
 
+        gamma_val = int(match.group(1)) / 1e4  # e.g. 00050 → 0.0050
+        gamma_folder = os.path.join(base_dir, gamma_folder_name)
+
         dirs = [d for d in os.listdir(gamma_folder) if re.match(rf"{variable}_\d+", d)]
-
         shears = []
-        extensions = []
-        
-        for folder in dirs:
-            data_dir = os.path.join(gamma_folder, folder)
+        means = []
+        stds = []
 
+        for folder in dirs:
+            shear_dir = os.path.join(gamma_folder, folder)
             match = re.match(r"shear_(\d+)$", folder)
-        
             if not match:
                 continue
 
             shear_label = int(match.group(1))
+            run_dirs = [d for d in os.listdir(shear_dir) if re.match(r"run_\d+", d)]
+            extensions = []
 
-            try:
-                npzfile = np.load(f"{data_dir}/positions.npz")
-                positions = npzfile["positions"]  # Access the array by its key
-                print("Loaded positions shape:", positions.shape)
+            for run in run_dirs if run_dirs else [""]:
+                data_dir = os.path.join(shear_dir, run) if run else shear_dir
+                file_path = os.path.join(data_dir, "positions.npz")
+                if not os.path.isfile(file_path):
+                    print(f"Missing file: {file_path}")
+                    continue
 
-            except FileNotFoundError:
-                print(f"Skipping {folder}: missing data files.")
+                try:
+                    npzfile = np.load(file_path)
+                    positions = npzfile["positions"]
+                except Exception as e:
+                    print(f"Error loading {file_path}: {e}")
+                    continue
+
+                extension = np.linalg.norm(positions[:, -1, :] - positions[:, 0, :], axis=1)
+                extension = extension / max_extension
+                extensions.append(extension[-1])
+
+            if not extensions:
                 continue
 
-            extension = np.linalg.norm(positions[:, -1, :] - positions[:, 0, :], axis=1)
-            extension = extension / max_extension  # normalized to max extension (Nmonomers x (a + r_0) = Nmonomers x 2a = 5)
-            shear_stress = float(shear_label) * dyn_visc * 10 # shear stress in dyn/cm^2
+            shear_stress = float(shear_label) * dyn_visc_SI * 10
             shears.append(shear_stress)
-            extensions.append(extension[-1])
-        
-        plt.scatter(shears, extensions, label=r"$\gamma$=" + f"{gamma}", marker='o')
 
-    plt.title("Final Polymer Extension vs Shear Rate")
-    plt.xlabel("Wall shear stress (dyn/cm²)")
-    plt.ylabel("Extension (normalized)")
-    plt.legend()
-    plt.savefig("extension_vs_shearstress.png", dpi=300, bbox_inches='tight')
-            
+            if len(extensions) == 1:
+                means.append(extensions[0])
+                stds.append(0)
+            else:
+                means.append(np.mean(extensions))
+                stds.append(np.std(extensions))
+
+        if shears:
+            shears = np.array(shears)
+            means = np.array(means)
+            stds = np.array(stds)
+
+            # Sort by shear stress
+            sort_idx = np.argsort(shears)
+            shears = shears[sort_idx]
+            means = means[sort_idx]
+            stds = stds[sort_idx]
+
+            color = color_cycle[idx % len(color_cycle)]
+            label = fr"$\gamma$ = {gamma_val:.4f}"
+
+            if np.all(stds == 0):
+                ax.plot(shears, means, label=label, color=color, marker='o',
+                        markersize=4, linewidth=1.5)
+            else:
+                ax.plot(shears, means, label=label, color=color, marker='o',
+                        markersize=4, linewidth=1.5)
+                ax.fill_between(shears, means - stds, means + stds, color=color, alpha=0.25)
+
+    # ax.set_title("Final Polymer Extension vs Shear Rate", fontsize=16)
+    ax.set_title(f"Final Polymer Extension vs Shear Rate\n{lj_title}", fontsize=16)
+
+    ax.set_xlabel("Wall shear stress [dyn/cm²]", fontsize=13)
+    ax.set_ylabel("Extension (normalized)", fontsize=13)
+    ax.tick_params(axis='both', labelsize=11)
+    ax.legend(fontsize=10, frameon=False)
+    ax.grid(True)
+
+    plt.tight_layout()
+    output_path = os.path.join(base_dir, "extension_vs_shearstress.png")
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    print(f"Plot saved to {output_path}")
+
 
 def plot_extension_over_time(base_dir, config):
     plt.figure(figsize=(12, 6))

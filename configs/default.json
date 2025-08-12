@@ -4,7 +4,7 @@
     "GAMMA": 0.005,
     "N_MONOMERS": 30,
     "a": 0.05,
-    "k": 0.065,
+    "k": 65,
     "d_r_max": 0.3,
     "shift": "auto",
     "VISC_dyn": 0.11
@@ -18,6 +18,7 @@
     "TETHERED":true,
     "SHEAR": 3000,
     "SEED": 42,
+    "stdev_initial_pos":0.01,
     "SAVE_VTK":false,
     "MINIMIZATION_STEPS":200
   },

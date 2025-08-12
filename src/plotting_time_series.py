@@ -4,110 +4,171 @@ import os
 import re
 import json
 
-def plot_simulation_results(config, base_dir, plot_type):
+def plot_simulation_results(config, base_dir, plot_type, target_shear=None):
+    plt.style.use("seaborn-v0_8-whitegrid")
+    color_cycle = plt.get_cmap("tab10").colors
+
     print(f"Plotting simulation results from directory: {base_dir}")
 
     variable = "shear"
-    max_extension = config["physical"]["N_MONOMERS"] * 2 * config["physical"]["a"] 
-    AGRID = config["geometry"]["AGRID"]
+    max_extension = config["physical"]["N_MONOMERS"] * 2 * config["physical"]["a"]
     TIMESTEP = config["simulation"]["TIME_STEP"]
+    STEPS = config["simulation"]["STEPS"]
+    N_MONOMERS = config["physical"]["N_MONOMERS"]
+    # Extract LJ and gamma values from base_dir
+    lj_match = re.search(r"LJ_(\d{5})", base_dir)
+    gamma_match = re.search(r"gamma_(\d{5})", base_dir)
+
+    lj_strength = int(lj_match.group(1)) / 1e2 if lj_match else None
+    gamma_val = int(gamma_match.group(1)) / 1e4 if gamma_match else None
+
+    lj_text = f"Lennard Jones potential = {lj_strength:.2f} × 4kT" if lj_strength is not None else ""
+    gamma_text = f"$\\gamma$ = {gamma_val:.4f}" if gamma_val is not None else ""
+
+    # Combined subtitle
+    subtitle = ", ".join(filter(None, [gamma_text, lj_text]))
+
+    dirs = [d for d in os.listdir(base_dir) if re.match(rf"{variable}_\d+", d)]
+
+    if target_shear is not None:
+        dirs = [d for d in dirs if d == f"{variable}_{target_shear}"]
+        if not dirs:
+            print(f"No data found for shear = {target_shear}")
+            return
+
+    if plot_type not in ["extension", "force"]:
+        print(f"Unsupported plot_type: {plot_type}")
+        return
+
+    if plot_type == "extension":
+        fig, ax = plt.subplots(figsize=(10, 6))
+
+        for idx, folder in enumerate(dirs):
+            data_dir = os.path.join(base_dir, folder)
+            shear_val = int(re.match(r"shear_(\d+)", folder).group(1))
+            shear_label = f"{shear_val} 1/s"
+
+            file_path = os.path.join(data_dir, "positions.npz")
+            if not os.path.isfile(file_path):
+                continue
+
+            try:
+                npzfile = np.load(file_path)
+                data = npzfile["positions"]
+                values = np.linalg.norm(data[:, -1, :] - data[:, 0, :], axis=1)
+                values /= max_extension
+            except Exception:
+                continue
+
+            dt = 1e-4 * TIMESTEP * STEPS
+            time_s = np.arange(len(values)) * dt
+            color = color_cycle[idx % len(color_cycle)]
+
+            ax.plot(time_s, values, label=shear_label, color=color, linewidth=1.5)
+
+        # ax.set_title("Polymer extension over time", fontsize=16)
+        ax.set_title(f"Polymer extension over time\n{subtitle}", fontsize=16)
+        ax.set_ylabel("Normalized extension", fontsize=13)
+        ax.set_xlabel("Time [s]", fontsize=13)
+        ax.tick_params(axis='both', labelsize=11)
+        if ax.has_data():
+            ax.legend(fontsize=10, frameon=False)
+        ax.grid(True)
+        plt.tight_layout()
+
+        output_path = os.path.join(base_dir, "extension.png")
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        print(f"Saved extension plot to {output_path}")
+
+    elif plot_type == "force":
+        fig, axs = plt.subplots(N_MONOMERS, 1, figsize=(10, 2 * N_MONOMERS), sharex=True)
+        if N_MONOMERS == 1:
+            axs = [axs]
+
+        for idx, folder in enumerate(dirs):
+            data_dir = os.path.join(base_dir, folder)
+            shear_val = int(re.match(r"shear_(\d+)", folder).group(1))
+            shear_label = f"{shear_val} 1/s"
+
+            file_path = os.path.join(data_dir, "forces.npz")
+            if not os.path.isfile(file_path):
+                continue
+
+            try:
+                npzfile = np.load(file_path)
+                data = npzfile["forces"]
+            except Exception:
+                continue
+
+            dt = 1e-4 * TIMESTEP * STEPS
+            time_s = np.arange(data.shape[0]) * dt
+            color = color_cycle[idx % len(color_cycle)]
+
+            for m in range(N_MONOMERS):
+                values = np.linalg.norm(data[:, m, :], axis=1) * 1000
+                axs[m].plot(time_s, values, label=shear_label, color=color, linewidth=1.2)
+                axs[m].set_ylabel(f"M{m} [pN]", fontsize=9)
+                axs[m].tick_params(axis='y', labelsize=8)
+                axs[m].grid(True)
+
+        for ax in axs:
+            if ax.has_data():
+                ax.legend(fontsize=8, frameon=False)
+        axs[-1].set_xlabel("Time [s]", fontsize=12)
+        # plt.suptitle("Force on each monomer over time", fontsize=16)
+        plt.suptitle(f"Force on each monomer over time\n{subtitle}", fontsize=16)
+
+        plt.tight_layout(rect=[0, 0, 1, 0.97])
+
+        output_path = os.path.join(base_dir, "force_per_monomer.png")
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        print(f"Saved force subplot per monomer to {output_path}")
+
+
+def plot_velocity_profile(config, base_dir):
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import os
+    import re
+
+    plt.style.use("seaborn-v0_8-whitegrid")
+    color_cycle = plt.get_cmap("tab10").colors
+
+    print(f"Plotting velocity profiles from: {base_dir}")
+    variable = "shear"
+    AGRID = config["geometry"]["AGRID"]
 
     dirs = [d for d in os.listdir(base_dir) if re.match(rf"{variable}_\d+.\d+", d)]
+    fig, ax = plt.subplots(figsize=(10, 6))
 
-    if plot_type=="velocity_profile":
-        plt.figure(figsize=(12, 6))
-        for folder in dirs:
-            data_dir = os.path.join(base_dir, folder)
+    for idx, folder in enumerate(dirs):
+        data_dir = os.path.join(base_dir, folder)
+        match = re.match(r"shear_(\d+).(\d+)", folder)
+        if not match:
+            continue
 
-            # Parse folder name
-            match = re.match(r"shear_(\d+).(\d+)", folder)
-            if not match:
-                continue
-            velocity_label = f"{int(match.group(1))}.{match.group(2)}"
-            
-            # Load data
-            try:
-                vprofile = np.load(f"{data_dir}/velocity_profile.npy")
-                z_pos = np.load(f"{data_dir}/z_positions.npy")
+        try:
+            vprofile = np.load(os.path.join(data_dir, "velocity_profile.npy"))
+            z_pos = np.load(os.path.join(data_dir, "z_positions.npy"))
+        except FileNotFoundError:
+            print(f"Missing velocity data in {folder}, skipping.")
+            continue
 
+        shear_val = (vprofile[-1] - vprofile[0]) / (len(z_pos) - (AGRID / 0.1 + 1)) * 1e5
+        label = f"shear {round(shear_val)} 1/s"
+        color = color_cycle[idx % len(color_cycle)]
+        ax.plot(z_pos, vprofile, label=label, color=color, linewidth=1.5)
 
-            except FileNotFoundError:
-                print(f"Skipping {folder}: missing data files.")
-                continue
-
-            calculated_shear = (vprofile[int(len(vprofile)-1)] - vprofile[0])/(len(z_pos)-(AGRID/0.1 + 1)) * 1e5
-            label_shear = f"shear {round(calculated_shear)} 1/s" 
-
-            plt.plot(z_pos, vprofile, label=f"{label_shear}")
-
-        plt.title("Velocity profile")
-        plt.xlabel(r"z $\mu m$")
-        # 10^{-2} m/s
-        plt.ylabel(r"$v_z [cm/s]$")
-        plt.legend()
-        plt.show()
-
-    if plot_type=="extension":
-        plt.figure(figsize=(12, 6))
-        for folder in dirs:
-            data_dir = os.path.join(base_dir, folder)
-
-            match = re.match(r"shear_(\d+)", folder)
-            if not match:
-                continue
-            shear_label = f"{int(match.group(1))} 1/s"
-
-            try:
-                positions = np.load(f"{data_dir}/positions.npy")
-
-            except FileNotFoundError:
-                print(f"Skipping {folder}: missing data files.")
-                continue
-
-            extension = np.linalg.norm(positions[:, -1, :] - positions[:, 0, :], axis=1)
-            extension = extension / max_extension  # normalized to max extension (50 x (a + r_0) = 50 x 2a = 5)
-
-            dt = 1e-4 * TIMESTEP  # seconds per timestep
-            print(len(extension))
-            time_s = np.arange(len(extension)) * dt
-
-            plt.plot(time_s, extension, label=f"{shear_label}")
-
-        plt.title("Polymer extension over time")
-        plt.xlabel("Time [s]")
-        plt.ylabel("Normalized extension")
-        plt.legend()
-        plt.show()
-
-    if plot_type=="force":
-        plt.figure(figsize=(12, 6))
-        for folder in dirs:
-            data_dir = os.path.join(base_dir, folder)
-
-            match = re.match(r"shear_(\d+)", folder)
-            if not match:
-                continue
-            shear_label = f"{int(match.group(1))} 1/s"
-            
-            # Load data
-            try:
-                forces = np.load(f"{data_dir}/forces.npy")
-
-            except FileNotFoundError:
-                print(f"Skipping {folder}: missing data files.")
-                continue
-
-            force_mag = np.linalg.norm(forces[:, 1, :], axis=1)  # Magnitude of the force on the first monomer
-
-            dt = 1e-4 * TIMESTEP  # seconds per timestep
-            time_s = np.arange(len(force_mag)) * dt
-
-            plt.plot(time_s, force_mag * 1000, label=f"{shear_label}")  # Convert to pN
-
-        plt.title("Tension on first monomer")
-        plt.xlabel("Time [s]")
-        plt.ylabel("Force [pN]")
-        plt.legend()
-        plt.show()
-
-# plot_simulation_results("./data/validation/gamma_500/")  # Adjust the path as needed
+    ax.set_title("Velocity profile", fontsize=16)
+    ax.set_xlabel(r"z [$\mu$m]", fontsize=13)
+    ax.set_ylabel(r"$v_z$ [cm/s]", fontsize=13)
+    ax.tick_params(axis='both', labelsize=11)
+    ax.legend(fontsize=10, frameon=False)
+    ax.grid(True)
+    plt.tight_layout()
+    output_path = os.path.join(base_dir, "velocity_profile.png")
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    print(f"Saved velocity profile plot to {output_path}")
