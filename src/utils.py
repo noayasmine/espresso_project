@@ -1,7 +1,7 @@
 import os
 import numpy as np
 
-def save_results(config, lbf, accumulator_forces, accumulator_positions):
+def save_results(config, lbf, accumulator_forces, drag_forces, accumulator_positions):
     shear = config["simulation"]["SHEAR"]
     loops = config["simulation"]["LOOPS"]
     BOX_Lx = config["geometry"]["BOX_Lx"]
@@ -12,6 +12,7 @@ def save_results(config, lbf, accumulator_forces, accumulator_positions):
     os.makedirs(outdir, exist_ok=True)
 
     np.savez_compressed(os.path.join(outdir, "positions.npz"), positions=accumulator_positions.time_series())
+    np.savez_compressed(os.path.join(outdir, "drag_forces.npz"), forces=drag_forces)
     np.savez_compressed(os.path.join(outdir, "forces.npz"), forces=accumulator_forces.time_series())
 
     # Compute velocity profile

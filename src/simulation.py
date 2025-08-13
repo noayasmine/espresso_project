@@ -13,12 +13,31 @@ import time
 
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
-def update_moving_average(buffer, new_value, window_size):
-    """Update list buffer with new_value and return mean over window."""
-    buffer.append(new_value)
-    if len(buffer) > window_size:
-        buffer.pop(0)  # remove oldest
-    return np.mean(buffer, axis=0)
+import numpy as np
+import espressomd.observables as obs
+
+def lb_drag_forces(system, lb, gamma, ids):
+    """
+    Compute F_drag = -gamma * (v_i - u(x_i)) for selected particles.
+
+    system : espressomd.System
+    lb : your LB fluid object (LBFluidCPU / LBFluidGPU)
+    gamma : float (LB coupling constant)
+    ids : list/array of particle ids
+    """
+    ids = np.asarray(ids, dtype=int)
+    pos = obs.ParticlePositions(ids=ids).calculate()   # Nx3 numpy
+    vel = obs.ParticleVelocities(ids=ids).calculate()  # Nx3 numpy
+
+    # Interpolated fluid velocities
+    u = np.empty_like(pos)
+    gi = lb.get_interpolated_velocity  # local ref for speed
+    for n in range(ids.size):
+        u[n] = gi(pos[n])
+
+    # F_drag
+    return -gamma * (vel - u)
+
 
 
 def build_polymers(system, run_type, n_monomers, n_polymers, start_positions, positions, fene, bond_length, TETHERED=True):
@@ -224,6 +243,7 @@ def run_simulation(params,run_type):
     logging.info("Run simulation.")
     start_time = time.time()
     WINDOW_FRAMES = 10
+    forces_traj = np.empty((int(LOOPS), N_MONOMERS, 3), dtype=np.float32)
 
     if save_VTK:
         for i in range(int(LOOPS)):
@@ -237,12 +257,12 @@ def run_simulation(params,run_type):
         for i in range(int(LOOPS)):
             print(f"step {i + 1} of {int(LOOPS)}", end='\r', flush=True)
             system.integrator.run(STEPS)
-            forces_all = accumulator_forces.time_series()
-            F_avg = np.mean(forces_all[-WINDOW_FRAMES:], axis=0)
+            #forces_all = accumulator_forces.time_series()
+            #F_avg = np.mean(forces_all[-WINDOW_FRAMES*STEPS:], axis=0)
 
-
+            forces_traj[i] = lb_drag_forces(system, lbf, GAMMA, particle_ids)
 
     end_time = time.time()
     print(f"Total runtime: {end_time - start_time:.2f} seconds")
     
-    return lbf, accumulator_forces, accumulator_positions
+    return lbf, accumulator_forces, accumulator_positions, forces_traj

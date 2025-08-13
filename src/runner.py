@@ -121,7 +121,7 @@ def add_polymer_positions(config, run_type):
 def add_timeloops_from_gridsize(config):
     steps = config["simulation"]["STEPS"]
     gridsize = config["geometry"]["AGRID"]
-    total_time = 0.1 # seconds
+    total_time = config["simulation"]["TOTAL_TIME"] # seconds
     time_unit = 1e-4 # seconds
     total_sim_time = total_time / time_unit
     time_step = config["simulation"]["TIME_STEP"] * gridsize ** 3
@@ -159,6 +159,7 @@ if __name__ == "__main__":
         gamma = float(sys.argv[3])
         LJ_strength = float(sys.argv[4])
         gridsize = float(sys.argv[5])
+        save_dir = str(sys.argv[6])
 
         config["simulation"]["SHEAR"] = shear
         config["physical"]["GAMMA"] = gamma
@@ -167,7 +168,7 @@ if __name__ == "__main__":
 
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
-        config["output"]["DIRECTORY"] = f"./data/validation_uncoil_1000K/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}"
+        config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}"
         add_polymer_positions(config, run_type)
     
     if run_type == "validation_coiling":
@@ -189,6 +190,6 @@ if __name__ == "__main__":
         config["output"]["DIRECTORY"] = f"./data/validation_coil/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/"
         add_polymer_positions(config, run_type)
     
-    lbf, forces, positions = run_simulation(config,run_type)
+    lbf, forces, positions, drag_forces = run_simulation(config,run_type)
 
-    save_results(config, lbf, forces, positions)
+    save_results(config, lbf, forces, drag_forces, positions)

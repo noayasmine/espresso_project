@@ -4,7 +4,17 @@ import os
 import re
 import json
 
-def plot_simulation_results(config, base_dir, plot_type, target_shear=None):
+def moving_average(data, N):
+    """Compute simple moving average over axis=0."""
+    if N <= 1:
+        return data
+    kernel = np.ones(N) / N
+    if data.ndim == 1:
+        return np.convolve(data, kernel, mode='valid')
+    else:
+        return np.array([np.convolve(col, kernel, mode='valid') for col in data.T]).T
+
+def plot_simulation_results(config, base_dir, plot_type, target_shear=None, avg_window=50):
     plt.style.use("seaborn-v0_8-whitegrid")
     color_cycle = plt.get_cmap("tab10").colors
 
@@ -15,7 +25,7 @@ def plot_simulation_results(config, base_dir, plot_type, target_shear=None):
     TIMESTEP = config["simulation"]["TIME_STEP"]
     STEPS = config["simulation"]["STEPS"]
     N_MONOMERS = config["physical"]["N_MONOMERS"]
-    # Extract LJ and gamma values from base_dir
+
     lj_match = re.search(r"LJ_(\d{5})", base_dir)
     gamma_match = re.search(r"gamma_(\d{5})", base_dir)
 
@@ -24,8 +34,6 @@ def plot_simulation_results(config, base_dir, plot_type, target_shear=None):
 
     lj_text = f"Lennard Jones potential = {lj_strength:.2f} × 4kT" if lj_strength is not None else ""
     gamma_text = f"$\\gamma$ = {gamma_val:.4f}" if gamma_val is not None else ""
-
-    # Combined subtitle
     subtitle = ", ".join(filter(None, [gamma_text, lj_text]))
 
     dirs = [d for d in os.listdir(base_dir) if re.match(rf"{variable}_\d+", d)]
@@ -57,6 +65,7 @@ def plot_simulation_results(config, base_dir, plot_type, target_shear=None):
                 data = npzfile["positions"]
                 values = np.linalg.norm(data[:, -1, :] - data[:, 0, :], axis=1)
                 values /= max_extension
+                values = moving_average(values, avg_window)
             except Exception:
                 continue
 
@@ -66,7 +75,6 @@ def plot_simulation_results(config, base_dir, plot_type, target_shear=None):
 
             ax.plot(time_s, values, label=shear_label, color=color, linewidth=1.5)
 
-        # ax.set_title("Polymer extension over time", fontsize=16)
         ax.set_title(f"Polymer extension over time\n{subtitle}", fontsize=16)
         ax.set_ylabel("Normalized extension", fontsize=13)
         ax.set_xlabel("Time [s]", fontsize=13)
@@ -91,7 +99,7 @@ def plot_simulation_results(config, base_dir, plot_type, target_shear=None):
             shear_val = int(re.match(r"shear_(\d+)", folder).group(1))
             shear_label = f"{shear_val} 1/s"
 
-            file_path = os.path.join(data_dir, "forces.npz")
+            file_path = os.path.join(data_dir, "drag_forces.npz")
             if not os.path.isfile(file_path):
                 continue
 
@@ -103,11 +111,15 @@ def plot_simulation_results(config, base_dir, plot_type, target_shear=None):
 
             dt = 1e-4 * TIMESTEP * STEPS
             time_s = np.arange(data.shape[0]) * dt
-            color = color_cycle[idx % len(color_cycle)]
 
+            # Precompute average once for all monomers
+            data_avg = moving_average(np.linalg.norm(data, axis=2) * 1000, avg_window)
+            time_s = np.arange(len(data_avg)) * dt  # Adjust time after averaging
+            N=int(len(data_avg)/10)
+            
+            color = color_cycle[idx % len(color_cycle)]
             for m in range(N_MONOMERS):
-                values = np.linalg.norm(data[:, m, :], axis=1) * 1000
-                axs[m].plot(time_s, values, label=shear_label, color=color, linewidth=1.2)
+                axs[m].plot(time_s[-N:], data_avg[:, m][-N:], label=shear_label, color=color, linewidth=1.2)
                 axs[m].set_ylabel(f"M{m} [pN]", fontsize=9)
                 axs[m].tick_params(axis='y', labelsize=8)
                 axs[m].grid(True)
@@ -116,9 +128,7 @@ def plot_simulation_results(config, base_dir, plot_type, target_shear=None):
             if ax.has_data():
                 ax.legend(fontsize=8, frameon=False)
         axs[-1].set_xlabel("Time [s]", fontsize=12)
-        # plt.suptitle("Force on each monomer over time", fontsize=16)
         plt.suptitle(f"Force on each monomer over time\n{subtitle}", fontsize=16)
-
         plt.tight_layout(rect=[0, 0, 1, 0.97])
 
         output_path = os.path.join(base_dir, "force_per_monomer.png")

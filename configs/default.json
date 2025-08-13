@@ -4,15 +4,16 @@
     "GAMMA": 0.005,
     "N_MONOMERS": 30,
     "a": 0.05,
-    "k": 65,
+    "k": 6.5,
     "d_r_max": 0.3,
     "shift": "auto",
     "VISC_dyn": 0.11
   },
   "simulation": {
     "TIME_STEP": 0.001,
-    "LOOPS": 800,
+    "LOOPS": 8000,
     "STEPS": 1000,
+    "TOTAL_TIME":0.4,
     "N_POLYMERS": 2,
     "DISTRIBUTION":"UNIFORM",
     "TETHERED":true,
