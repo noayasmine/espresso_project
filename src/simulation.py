@@ -13,8 +13,41 @@ import time
 
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
-import numpy as np
-import espressomd.observables as obs
+def lb_units_and_gammas(agrid, tau, nu_md, xi_md=None, trt=False):
+    # MD -> LB conversions
+    nu_lb = nu_md * (tau / (agrid**2))
+    xi_lb = (xi_md * (tau / (agrid**2))) if (xi_md is not None) else None
+
+    # Gammas (MRT)
+    gamma_shear = 1.0 - 2.0 / (6.0 * nu_lb + 1.0)
+    if xi_lb is None:
+        gamma_bulk = 0.0   # ESPResSo default when bulk viscosity not provided
+        xi_lb_eff = 1.0/9.0
+    else:
+        gamma_bulk = 1.0 - 2.0 / (9.0 * xi_lb + 1.0)
+        xi_lb_eff = xi_lb
+
+    if trt:
+        gamma_even = gamma_shear
+        gamma_odd  = -(7.0 * gamma_even + 1.0) / (gamma_even + 7.0)
+    else:
+        gamma_even = 0.0
+        gamma_odd  = 0.0
+
+    # BGK-style taus (per-mode intuition)
+    tau_bkg_shear = 1.0 / (1.0 - gamma_shear)
+    tau_bkg_bulk  = 1.0 / (1.0 - gamma_bulk) if gamma_bulk != 1.0 else float("inf")
+
+    return {
+        "nu_LB": nu_lb,
+        "xi_LB": xi_lb_eff,
+        "gamma_shear": gamma_shear,
+        "gamma_bulk": gamma_bulk,
+        "gamma_even": gamma_even,
+        "gamma_odd": gamma_odd,
+        "tau_BGK_shear": tau_bkg_shear,
+        "tau_BGK_bulk": tau_bkg_bulk,
+    }
 
 def lb_drag_forces(system, lb, gamma, ids):
     """
@@ -26,8 +59,8 @@ def lb_drag_forces(system, lb, gamma, ids):
     ids : list/array of particle ids
     """
     ids = np.asarray(ids, dtype=int)
-    pos = obs.ParticlePositions(ids=ids).calculate()   # Nx3 numpy
-    vel = obs.ParticleVelocities(ids=ids).calculate()  # Nx3 numpy
+    pos = espressomd.observables.ParticlePositions(ids=ids).calculate()   # Nx3 numpy
+    vel = espressomd.observables.ParticleVelocities(ids=ids).calculate()  # Nx3 numpy
 
     # Interpolated fluid velocities
     u = np.empty_like(pos)
@@ -37,7 +70,6 @@ def lb_drag_forces(system, lb, gamma, ids):
 
     # F_drag
     return -gamma * (vel - u)
-
 
 
 def build_polymers(system, run_type, n_monomers, n_polymers, start_positions, positions, fene, bond_length, TETHERED=True):
@@ -105,11 +137,11 @@ def run_simulation(params,run_type):
 
     VELOCITY = SHEAR * (BOX_Lz - AGRID)
     VELOCITY2 = sim["VELOCITY"]
-    outdir = DIRECTORY + f'vtk_data/'
+    outdir = DIRECTORY + f'/vtk_data/'
     if save_VTK:
         os.makedirs(outdir, exist_ok=True)
 
-    logging.info(f"Running simulation: shear={int(SHEAR*1e4)}, n_polymers={N_POLYMERS}, n_monomers={N_MONOMERS}, gridsize={AGRID}, timestep={TIME_STEP}")
+    logging.info(f"Running simulation: shear={int(SHEAR*1e4)}, n_polymers={N_POLYMERS}, n_monomers={N_MONOMERS}, gridsize={AGRID}, timestep={TIME_STEP}, viscosity={VISC}")
     logging.info(f"Running simulation: VELOCITY={VELOCITY}, VELOCITY={VELOCITY2}")
 
     system = espressomd.System(box_l=[BOX_Lx, BOX_Ly, BOX_Lz], periodicity=[True, True, False])
@@ -238,6 +270,11 @@ def run_simulation(params,run_type):
 
     # system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_up_lb_vel, velocity=[0, 0, 0]))
     # system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_down_lb_vel, velocity=[0, 0, 0]))
+    # Example with your values:
+    vals = lb_units_and_gammas(agrid=AGRID, tau=TIME_STEP*5, nu_md=VISC)
+    for k, v in vals.items():
+        print(f"{k}: {v}")
+
 
     # Main simulation loop
     logging.info("Run simulation.")

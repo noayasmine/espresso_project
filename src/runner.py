@@ -136,7 +136,6 @@ if __name__ == "__main__":
     path = "configs/default.json"
     config = load_config(path)
     run_type = str(sys.argv[1])
-    # np.random.seed(config["simulation"]["SEED"])
 
     if run_type == "test_gridsizes":
         shear = float(sys.argv[2])
@@ -161,6 +160,7 @@ if __name__ == "__main__":
         gridsize = float(sys.argv[5])
         save_dir = str(sys.argv[6])
 
+        # set parameters to match the validation data from Fu et al.
         config["simulation"]["SHEAR"] = shear
         config["physical"]["GAMMA"] = gamma
         config["simulation"]["N_POLYMERS"] = 1
@@ -170,26 +170,68 @@ if __name__ == "__main__":
         add_dependent_parameters(config, LJ_strength)
         config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}"
         add_polymer_positions(config, run_type)
-    
+
+    if run_type == "validation_uncoiling_free":
+        run_type = "validation_uncoiling"
+        shear = float(sys.argv[2])
+        gamma = float(sys.argv[3])
+        LJ_strength = float(sys.argv[4])
+        gridsize = float(sys.argv[5])
+        save_dir = str(sys.argv[6])
+
+        # set parameters to match the validation data from Schneider et al.
+        config["simulation"]["SHEAR"] = shear
+        config["physical"]["GAMMA"] = gamma
+        config["physical"]["N_MONOMERS"] = 150
+        config["geometry"]["BOX_Lx"] = 100
+        config["simulation"]["N_POLYMERS"] = 1
+        config["geometry"]["AGRID"] = gridsize
+        config["simulation"]["TETHERED"] = False
+        add_timeloops_from_gridsize(config)
+        add_dependent_parameters(config, LJ_strength)
+        config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}"
+        add_polymer_positions(config, run_type)
+
     if run_type == "validation_coiling":
         gamma = float(sys.argv[2])
         LJ_strength = float(sys.argv[3])
         gridsize = float(sys.argv[4])
-        run = int(sys.argv[5])
-        # stdev = float(sys.argv[6])
+        save_dir = str(sys.argv[5])
 
+        # for coiling, the experimental data added 60% sucrose, so need to account for that in the runs
+        config["fluid"]["VISC"] = config["fluid"]["VISC"] * 58
+        config["fluid"]["DENS"] = 0.00013
         config["physical"]["GAMMA"] = gamma
-        # config["simulation"]["stdev_initial_pos"] = stdev
         config["geometry"]["AGRID"] = gridsize
         config["simulation"]["N_POLYMERS"] = 1
+        config["simulation"]["TOTAL_TIME"] = 0.7
 
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
         
-        # config["output"]["DIRECTORY"] = f"./data/validation_coil/test_stdev/stdev_{int(stdev*1e3):05d}/"
-        config["output"]["DIRECTORY"] = f"./data/validation_coil/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/"
+        config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/"
         add_polymer_positions(config, run_type)
     
+    if run_type == "test_initial_setup":
+        run_type = "validation_uncoiling"
+        shear = float(sys.argv[2])
+        gamma = float(sys.argv[3])
+        LJ_strength = float(sys.argv[4])
+        gridsize = float(sys.argv[5])
+        save_dir = str(sys.argv[6])
+
+        config["simulation"]["SAVE_VTK"] = True
+
+        config["simulation"]["SHEAR"] = shear
+        config["physical"]["GAMMA"] = gamma
+        config["simulation"]["N_POLYMERS"] = 1
+        config["geometry"]["AGRID"] = gridsize
+        config["simulation"]["TETHERED"] = False
+        add_timeloops_from_gridsize(config)
+        add_dependent_parameters(config, LJ_strength)
+        config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}"
+        add_polymer_positions(config, run_type)
+
     lbf, forces, positions, drag_forces = run_simulation(config,run_type)
 
     save_results(config, lbf, forces, drag_forces, positions)
