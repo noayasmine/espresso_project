@@ -12,7 +12,7 @@ sys.path.append(project_root)
 # from src.plotting_time_series import plot_simulation_results
 # from src.plotting_griddistances_avg import plot_grid_results_avg
 
-from src.all_plotting import plot_time_series, plot_validation_results
+from src.all_plotting import plot_time_series, plot_validation_results, plot_tethered_across_LJ_for_gamma
 
 def load_config(path):
     with open(path) as f:
@@ -21,17 +21,29 @@ def load_config(path):
 config_path = "/gpfs/home4/nroebersen/espresso_project/configs/default.json"
 config = load_config(config_path)
 
-base_dir = "/gpfs/home4/nroebersen/espresso_project/data/longrun/validation_uncoil_100K/"
+# base_dir = "/gpfs/home4/nroebersen/espresso_project/data/longrun/validation_uncoil_100K/"
+# LJ_folders = [f for f in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, f))]
+# for LJ_folder in LJ_folders:
+#     base_dir_LJ = os.path.join(base_dir, LJ_folder)
+#     plot_validation_results(config, base_dir_LJ, validation_type="tethered", target_gamma=0.0055)
+#     gamma_folders = [f for f in os.listdir(base_dir_LJ) if os.path.isdir(os.path.join(base_dir_LJ, f))]
+
+#     for gamma_folder in gamma_folders:
+#         base_dir_gamma = os.path.join(base_dir_LJ, gamma_folder)
+#         plot_time_series(config, base_dir_gamma, plot_type="extension", validation_type="tethered")
+#         plot_time_series(config, base_dir_gamma, plot_type="force", validation_type="tethered", target_shear=11636)
+
+base_dir = "/gpfs/home4/nroebersen/espresso_project/data/test_vtk/validation_uncoil_free_10000K_8s_bigbox/"
 LJ_folders = [f for f in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, f))]
 for LJ_folder in LJ_folders:
     base_dir_LJ = os.path.join(base_dir, LJ_folder)
-    plot_validation_results(config, base_dir_LJ, validation_type="tethered")
+    plot_validation_results(config, base_dir_LJ, validation_type="free", target_gamma=0.0055, Box_Lx=56)
     gamma_folders = [f for f in os.listdir(base_dir_LJ) if os.path.isdir(os.path.join(base_dir_LJ, f))]
 
     for gamma_folder in gamma_folders:
         base_dir_gamma = os.path.join(base_dir_LJ, gamma_folder)
-        plot_time_series(config, base_dir_gamma, plot_type="extension", validation_type="tethered")
-        plot_time_series(config, base_dir_gamma, plot_type="force", validation_type="tethered", target_shear=11636)
+        plot_time_series(config, base_dir_gamma, plot_type="extension", validation_type="free", Box_Lx=56)
+        plot_time_series(config, base_dir_gamma, plot_type="force", validation_type="free", target_shear=11636)
 
 # base_dir = "/gpfs/home4/nroebersen/espresso_project/data/longrun/validation_uncoil_free_100K/"
 # LJ_folders = [f for f in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, f))]
@@ -45,17 +57,41 @@ for LJ_folder in LJ_folders:
 #         plot_time_series(config, base_dir_gamma, plot_type="extension", validation_type="free")
 #         plot_time_series(config, base_dir_gamma, plot_type="force", validation_type="free", target_shear=11636)
 
-# base_dir = "/gpfs/home4/nroebersen/espresso_project/data/longrun/validation_uncoil_free_100K_Schneider/"
+# base_dir = "/gpfs/home4/nroebersen/espresso_project/data/longrun/validation_uncoil_free_100K/"
 # LJ_folders = [f for f in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, f))]
 # for LJ_folder in LJ_folders:
 #     base_dir_LJ = os.path.join(base_dir, LJ_folder)
-#     plot_validation_results(config, base_dir_LJ, validation_type="free", Box_Lx=100)
+#     plot_validation_results(config, base_dir_LJ, validation_type="free")
 #     gamma_folders = [f for f in os.listdir(base_dir_LJ) if os.path.isdir(os.path.join(base_dir_LJ, f))]
 
 #     for gamma_folder in gamma_folders:
 #         base_dir_gamma = os.path.join(base_dir_LJ, gamma_folder)
-#         plot_time_series(config, base_dir_gamma, plot_type="extension", validation_type="free", Box_Lx=100)
-#         plot_time_series(config, base_dir_gamma, plot_type="force", validation_type="free", Box_Lx=100, target_shear=11636)
+#         plot_time_series(config, base_dir_gamma, plot_type="extension", validation_type="free")
+#         # plot_time_series(config, base_dir_gamma, plot_type="force", validation_type="free", target_shear=11636)
+
+# base_dir = "/gpfs/home4/nroebersen/espresso_project/data/longrun/validation_uncoil_free_100K/"
+# LJ_folders = [f for f in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, f))]
+# for LJ_folder in LJ_folders:
+#     base_dir_LJ = os.path.join(base_dir, LJ_folder)
+#     plot_validation_results(config, base_dir_LJ, validation_type="free", free_metric="end_to_end", target_gamma=0.0055)
+#     gamma_folders = [f for f in os.listdir(base_dir_LJ) if os.path.isdir(os.path.join(base_dir_LJ, f))]
+
+#     for gamma_folder in gamma_folders:
+#         base_dir_gamma = os.path.join(base_dir_LJ, gamma_folder)
+#         plot_time_series(config, base_dir_gamma, plot_type="extension", validation_type="free", free_metric="end_to_end")
+
+
+# base_dir = "/gpfs/home4/nroebersen/espresso_project/data/test_vtk/validation_uncoil_free_100K_comfixed/"
+# LJ_folders = [f for f in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, f))]
+# for LJ_folder in LJ_folders:
+#     base_dir_LJ = os.path.join(base_dir, LJ_folder)
+#     plot_validation_results(config, base_dir_LJ, validation_type="free")
+#     gamma_folders = [f for f in os.listdir(base_dir_LJ) if os.path.isdir(os.path.join(base_dir_LJ, f))]
+
+#     for gamma_folder in gamma_folders:
+#         base_dir_gamma = os.path.join(base_dir_LJ, gamma_folder)
+#         plot_time_series(config, base_dir_gamma, plot_type="extension", validation_type="free")
+#         # plot_time_series(config, base_dir_gamma, plot_type="force", validation_type="free", target_shear=11636)
 
 
 # base_dir_grids = "/gpfs/home4/nroebersen/espresso_project/data/test_grids_single_runs/"
@@ -83,4 +119,10 @@ for LJ_folder in LJ_folders:
 #         print(f"running for {base_dir_gamma}")
 #         plot_simulation_results_free(config, base_dir_gamma, plot_type="extension")
 #         # plot_simulation_results(config, base_dir_gamma, plot_type="force", target_shear=11636)
-
+base_dir = "/gpfs/home4/nroebersen/espresso_project/data/longrun/validation_uncoil_100K/"
+target_gamma = "gamma_00055"
+plot_tethered_across_LJ_for_gamma(
+    config,
+    base_dir,
+    target_gamma
+)

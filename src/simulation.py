@@ -115,9 +115,7 @@ def run_simulation(params,run_type):
     TETHERED = sim["TETHERED"]
     SHEAR = sim["SHEAR"] * 1e-4  # Convert units if needed
     save_VTK = sim["SAVE_VTK"]
-    # minimization_steps = int(100 * (1 / AGRID) ** 2)
     minimization_steps = sim["MINIMIZATION_STEPS"]
-    # print(sim["MONOMER_COUNTS"])
 
     # Physical parameters
     KT = phys["KT"]
@@ -197,6 +195,8 @@ def run_simulation(params,run_type):
     system.integrator.set_steepest_descent(f_max=0, gamma=0.001, max_displacement=0.0001 * sigma)
 
     if run_type=="validation_uncoiling":
+        # espressomd.comfixed.ComFixed(types=np.array([0]))
+
         logging.info("Energy minimization.")
 
         if save_VTK:

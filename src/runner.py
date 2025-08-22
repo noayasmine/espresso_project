@@ -182,11 +182,14 @@ if __name__ == "__main__":
         # set parameters to match the validation data from Schneider et al.
         config["simulation"]["SHEAR"] = shear
         config["physical"]["GAMMA"] = gamma
-        config["physical"]["N_MONOMERS"] = 150
-        config["geometry"]["BOX_Lx"] = 100
+        # config["physical"]["N_MONOMERS"] = 150
+        # config["geometry"]["BOX_Lx"] = 100
+        # config["geometry"]["BOX_Ly"] = 20
+        # config["geometry"]["BOX_Lz"] = 20
         config["simulation"]["N_POLYMERS"] = 1
         config["geometry"]["AGRID"] = gridsize
         config["simulation"]["TETHERED"] = False
+        config["simulation"]["TOTAL_TIME"] = 0.8
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
         config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}"
@@ -221,11 +224,15 @@ if __name__ == "__main__":
         save_dir = str(sys.argv[6])
 
         config["simulation"]["SAVE_VTK"] = True
-
+        config["geometry"]["BOX_Lx"] = 56
+        config["geometry"]["BOX_Ly"] = 24
+        config["geometry"]["BOX_Lz"] = 24
         config["simulation"]["SHEAR"] = shear
         config["physical"]["GAMMA"] = gamma
         config["simulation"]["N_POLYMERS"] = 1
         config["geometry"]["AGRID"] = gridsize
+        config["simulation"]["TOTAL_TIME"] = 0.8
+        config["physical"]["k"] = 650
         config["simulation"]["TETHERED"] = False
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
