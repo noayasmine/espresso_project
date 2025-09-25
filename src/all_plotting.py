@@ -408,7 +408,7 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
                 print(f"Requested monomer_index={monomer_index} is out of range [0, {N_detect-1}]")
                 return
 
-            fig, ax = plt.subplots(figsize=(8, 4))
+            fig, ax = plt.subplots(figsize=(6, 3))
             for i, sd in enumerate(shear_dirs_force):
                 f = os.path.join(base_dir, sd, "drag_forces.npz")
                 if not os.path.isfile(f):

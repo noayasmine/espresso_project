@@ -30,21 +30,21 @@ config = load_config(config_path)
 # base_dir = "/home/nroebersen/espresso_project/validation_data/test_grids_10000K"
 # plot_grid_results_avg(config, base_dir, plot_mode="mean_std")
 
-# make plot for tethered uncoiling data
-# base_dir = "/gpfs/home4/nroebersen/espresso_project/data/longrun/validation_uncoil_10000K/"
-# LJ_folders = [f for f in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, f))]
-# for LJ_folder in LJ_folders:
-#     base_dir_LJ = os.path.join(base_dir, LJ_folder)
-#     plot_validation_results(config, base_dir_LJ, validation_type="tethered", target_gamma=0.0055)
-#     # plot_cumulative_force_across_gammas(config, base_dir_LJ, target_shear=11636, avg_window=1,
-#     # start_from_right=30, use_last_fraction=0.25)
+#make plot for tethered uncoiling data
+base_dir = "/gpfs/home4/nroebersen/espresso_project/data/longrun/validation_uncoil_10000K/"
+LJ_folders = [f for f in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, f))]
+for LJ_folder in LJ_folders:
+    base_dir_LJ = os.path.join(base_dir, LJ_folder)
+    plot_validation_results(config, base_dir_LJ, validation_type="tethered", target_gamma=0.0055)
+    # plot_cumulative_force_across_gammas(config, base_dir_LJ, target_shear=11636, avg_window=1,
+    # start_from_right=30, use_last_fraction=0.25)
 
-#     gamma_folders = [f for f in os.listdir(base_dir_LJ) if os.path.isdir(os.path.join(base_dir_LJ, f))]
+    gamma_folders = [f for f in os.listdir(base_dir_LJ) if os.path.isdir(os.path.join(base_dir_LJ, f))]
 
-#     for gamma_folder in gamma_folders:
-#         base_dir_gamma = os.path.join(base_dir_LJ, gamma_folder)
-#         #plot_time_series(config, base_dir_gamma, plot_type="extension", validation_type="tethered", k_fene=650)
-#         plot_time_series(config, base_dir_gamma, plot_type="force", validation_type="tethered", target_shear=11636, monomer_index=10)
+    for gamma_folder in gamma_folders:
+        base_dir_gamma = os.path.join(base_dir_LJ, gamma_folder)
+        #plot_time_series(config, base_dir_gamma, plot_type="extension", validation_type="tethered", k_fene=650)
+        plot_time_series(config, base_dir_gamma, plot_type="force", validation_type="tethered", target_shear=11636, monomer_index=10)
 
 # base_dir = "/gpfs/home4/nroebersen/espresso_project/data/longrun/validation_uncoil_100K/"
 # LJ_folders = [f for f in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, f))]

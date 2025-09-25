@@ -5,6 +5,7 @@
 __pycache__/
 .DS_Store
 data/
+validation_data/
 *.avi
 *.png
 *.log
