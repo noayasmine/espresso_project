@@ -117,7 +117,7 @@ def plot_grid_results_avg(config, base_dir, plot_mode="mean_std"):
             if plot_mode == "mean_std":
                 mean = item[2]
                 std = item[3]
-                label = f"grid={grid_value}"
+                label = f"grid={grid_value}" + r"$\mu m$"
                 color = color_cycle[i % len(color_cycle)]
                 ax.plot(time_s, mean, label=label, color=color,
                         linewidth=1.5, marker='o', markersize=2)
@@ -126,7 +126,7 @@ def plot_grid_results_avg(config, base_dir, plot_mode="mean_std"):
             else:
                 run_curve = item[2]
                 run_idx = item[3]
-                label = f"grid={grid_value} run={run_idx}"
+                label = f"grid={grid_value}" + r" $\mu m$" + f"run={run_idx}"
                 ax.plot(time_s, run_curve, label=label,
                         alpha=0.7, linewidth=1.5)
         shearrate_str = r"$\dot \gamma$"

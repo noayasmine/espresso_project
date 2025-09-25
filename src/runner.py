@@ -154,8 +154,8 @@ if __name__ == "__main__":
         # config["simulation"]["SAVE_VTK"] = True
         
         # reduce time step for run with gridsize = 0.25 and increase minimization steps
-        if gridsize==0.25:
-            config["simulation"]["TIME_STEP"] = 0.000125/2
+        # if gridsize==0.25:
+        #     config["simulation"]["TIME_STEP"] = 0.000125/2
 
         np.random.seed(config["simulation"]["SEED"])
 
@@ -168,8 +168,11 @@ if __name__ == "__main__":
         shear = float(sys.argv[2])
         gamma = float(sys.argv[3])
         LJ_strength = float(sys.argv[4])
-        save_dir = str(sys.argv[5])
+        run = int(sys.argv[5])
+        save_dir = str(sys.argv[6])
 
+        # set rud_id as seed
+        config["simulation"]["SEED"] = run
         # set parameters to match the validation data from Fu et al.
         config["simulation"]["SHEAR"] = shear
         config["physical"]["GAMMA"] = gamma
@@ -181,7 +184,7 @@ if __name__ == "__main__":
         config["physical"]["k"] = 650
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
-        config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}"
+        config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}/run_{run}/"
         add_polymer_positions(config, run_type)
 
     if run_type == "validation_uncoiling_free":
@@ -189,8 +192,11 @@ if __name__ == "__main__":
         shear = float(sys.argv[2])
         gamma = float(sys.argv[3])
         LJ_strength = float(sys.argv[4])
-        save_dir = str(sys.argv[5])
-
+        run = int(sys.argv[5])
+        save_dir = str(sys.argv[6])
+        
+        # set run id as random seed
+        config["simulation"]["SEED"] = run
         # set parameters to match the validation data from Schneider et al.
         config["simulation"]["SHEAR"] = shear
         config["physical"]["GAMMA"] = gamma
@@ -214,12 +220,12 @@ if __name__ == "__main__":
 
         # increased steps in simulation to save the data (to run for vtk)
         # since otherwise the file will be too big
-        config["simulation"]["SAVE_VTK"] = True
+        config["simulation"]["SAVE_VTK"] = False
         config["simulation"]["STEPS"] = 10000
 
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
-        config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}"
+        config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}/run_{run}"
         add_polymer_positions(config, run_type)
 
     if run_type == "validation_coiling":

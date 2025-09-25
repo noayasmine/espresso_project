@@ -7,13 +7,6 @@ def min_image_1d(dr, L):
     """Minimum-image in 1D."""
     return dr if (L is None or L <= 0) else dr - np.round(dr / L) * L
 
-def _normalize_to_Lmax(E, Lmax):
-    E0 = E[0]
-    den = Lmax - E0
-    if den <= 0 or not np.isfinite(den):
-        den = np.finfo(float).eps
-    return (E - E0) / den
-
 def unwrap_frame(pos, Lx=None, Ly=None, Lz=None):
     """Unwrap a single frame (N,D) by building it from minimum-image bond vectors."""
     N, D = pos.shape
@@ -206,6 +199,7 @@ def plot_validation_results(config, base_dir, validation_type="free",
         if str(validation_type).lower() == "free":
             label += f" ({'end-to-end' if free_metric=='end_to_end' else 'max-pairwise'})"
         ax.plot(shears, norm_m, marker='o', lw=1.5, color=c, label=label)
+
         if not np.all(norm_s == 0):
             ax.fill_between(shears, norm_m - norm_s, norm_m + norm_s, color=c, alpha=0.25)
 
@@ -235,6 +229,8 @@ def plot_validation_results(config, base_dir, validation_type="free",
     if str(validation_type).lower() == "free":
         ax.set_xlabel("Wall shear stress [dyn/cm²]",fontsize=15)
         ax.set_ylabel(r"$\hat{E}^{final}_{free}$", fontsize=15)
+        ax.set_xscale("log")
+        ax.set_xlim(0,2000)
     else:
         ax.set_xlabel("Wall shear stress [dyn/cm²]",fontsize=15)
         ax.set_ylabel(r"$\hat{E}^{final}_{tethered}$", fontsize=15)
@@ -247,7 +243,8 @@ def plot_validation_results(config, base_dir, validation_type="free",
 
 # ---------- Time series (dynamic N + optional Box_Lx override + free_metric) ----------
 def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=1,
-                     validation_type="free", Box_Lx=None, free_metric="end_to_end", time_step=None, k_fene=6.5):
+                     validation_type="free", Box_Lx=None, free_metric="end_to_end", time_step=None, k_fene=6.5, 
+                     monomer_index=None):
     """
     plot_type = 'extension' (normalized extension over time),
                 'force'     (per-monomer + cumulative summary; smoothed)
@@ -405,6 +402,47 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
             print("No drag_forces.npz found in selected shears; cannot plot forces.")
             return
 
+        # If a specific monomer is requested, validate index and do single-axis plot
+        if monomer_index is not None:
+            if not (0 <= int(monomer_index) < N_detect):
+                print(f"Requested monomer_index={monomer_index} is out of range [0, {N_detect-1}]")
+                return
+
+            fig, ax = plt.subplots(figsize=(8, 4))
+            for i, sd in enumerate(shear_dirs_force):
+                f = os.path.join(base_dir, sd, "drag_forces.npz")
+                if not os.path.isfile(f):
+                    continue
+                try:
+                    F = np.load(f)["forces"]                    # (T, N, 3)
+                    if monomer_index >= F.shape[1]:
+                        print(f"{sd}: monomer_index {monomer_index} >= N={F.shape[1]} (skipping)")
+                        continue
+                    Fmag = np.linalg.norm(F[:, monomer_index, :], axis=1) * 1000  # pN
+                    Fm = moving_average_centered(Fmag, avg_window)                # (T,)
+                    t = np.arange(len(Fm)) * dt
+
+                    nL = int(len(Fm)/4) if len(Fm) > 0 else 0          # last quarter (your comment)
+                    # nL = int(len(Fm))                                    # currently full length
+                    if nL > 0:
+                        ax.plot(t[-nL:], Fm[-nL:], lw=1.5,
+                                # color=color_cycle[i % 20],
+                                color="purple",
+                                label=f"Monomer index={monomer_index}")
+                                
+                except Exception as e:
+                    print(f"Skip {f}: {e}")
+
+            ax.set_xlabel("Time [s]", fontsize=15)
+            ax.set_ylabel(f"Drag force [pN]", fontsize=15)
+            # ax.set_title(f"Force vs time (monomer {monomer_index})\n{subtitle}", fontsize=14)
+            # if ax.has_data(): ax.legend(frameon=False, fontsize=10, ncol=2)
+            ax.grid(True); plt.tight_layout()
+            out = os.path.join(base_dir, f"force_monomer_{monomer_index}_vs_time.png")
+            plt.savefig(out, dpi=300, bbox_inches='tight'); plt.close(fig)
+            print(f"Saved {out}")
+            # return
+
         fig, axs = plt.subplots(N_detect, 1, figsize=(10, 2*N_detect), sharex=True)
         if N_detect == 1: axs = [axs]
         lastN = {}
@@ -423,11 +461,12 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
 
                 # Take the last quarter of temporal data (i.e. when the data has equilibrated)
                 nL = int(len(Fm)/4) if len(Fm)>0 else 0
-                
+                # nL = int(len(Fm))
+                print(nL)
                 c = color_cycle[i % 20]
                 for m in range(N_use):
                     if nL>0:
-                        axs[m].plot(t[-nL:], Fm[:,m][-nL:], lw=1.2, color=c, label=f"{sd.split('_')[1]} 1/s")
+                        axs[m].plot(t[-nL:], Fm[:,m][-nL:], lw=1.2, color="purple", label=f"{sd.split('_')[1]} 1/s")
                     axs[m].set_ylabel(f"M{m} [pN]", fontsize=9); axs[m].grid(True)
                 if nL>0: lastN[sd] = Fm[-nL:,:]
             except Exception as e:
@@ -474,7 +513,7 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
             ax.set_xlabel("Monomer index", fontsize=15); ax.set_ylabel("Tensile force [pN]", fontsize=15)
             #ax.set_xticks(idx)
             ax.set_xticks(np.arange(0, N_detect+1, 5))
-            ax.set_xlim(0,31)
+            ax.set_xlim(-1,30)
             ax.grid(True); ax.legend(frameon=False, fontsize=10)
             plt.tight_layout()
             out2 = os.path.join(base_dir, "force_cumulative_vs_monomer_test.png")
@@ -482,7 +521,6 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
         return
 
     print(f"Unsupported plot_type: {plot_type}")
-
 
 def plot_tethered_across_LJ_for_gamma(
     config,
@@ -492,28 +530,9 @@ def plot_tethered_across_LJ_for_gamma(
     include_expected=True,
     outname=None,
     save_errors=True,
-    errors_name=None
+    errors_name=None,
+    aggregate_runs=True           # if True, use mean±std across run_* per shear; if False, plot each run
 ):
-    """
-    One plot: normalized final extension vs wall shear stress for ONE gamma,
-    aggregating across ALL LJ_* folders in `base_dir`. One curve per LJ.
-
-    Metric (tethered): E_final = max_i || r_i - r_anchor || at the last frame.
-    Normalization (per curve): (E_final - E0) / (Lmax - E0),
-        where E0 is from shear==0 (or the smallest available shear).
-    Lmax = N * 2 * a with N read dynamically from data (positions shape).
-
-    Also computes squared error vs the expected tethered curve using
-    linear interpolation of expected_y and expected_std at the curve’s x-points:
-        SSE = sum( (y - y_exp)^2 )
-        chi2 = sum( ((y - y_exp)/sigma)^2 )
-    Reported for:
-        - the LJ mean curve (aggregated across runs per shear) — shown in legend as χ²/pt
-        - each run id curve (if the same run id appears across multiple shears)
-
-    Saves a CSV with columns:
-      level, lj_label, identifier, n_points, sse, mse, rmse, chi2, chi2_per_point
-    """
     import os, re, csv
     import numpy as np
     import matplotlib.pyplot as plt
@@ -523,15 +542,6 @@ def plot_tethered_across_LJ_for_gamma(
         p = positions[-1]                             # last frame (N,D)
         d = np.linalg.norm(p - p[anchor_idx], axis=1)
         return float(np.max(d))
-
-    def tethered_time_series(positions, anchor_idx=0):
-        T = positions.shape[0]
-        out = np.empty(T, float)
-        for t in range(T):
-            p = positions[t]
-            d = np.linalg.norm(p - p[anchor_idx], axis=1)
-            out[t] = np.max(d)
-        return out
 
     def fmt_kT(val):
         r = round(val)
@@ -550,7 +560,7 @@ def plot_tethered_across_LJ_for_gamma(
     # expected tethered curve
     exp_x = np.array([0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1280], float)
     exp_y = np.array([0.00, 0.35, 0.55, 0.63, 0.70, 0.75, 0.81, 0.85, 0.90, 0.92, 0.94, 0.96, 0.96, 0.96], float)
-    exp_s = np.array([0.1, 0.2, 0.2, 0.25, 0.3, 0.35, 0.35, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3], float)
+    exp_s = np.array([0.1, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2], float)
 
     # parse/format gamma
     gpat = re.compile(r"gamma_(\d{5})")
@@ -583,7 +593,6 @@ def plot_tethered_across_LJ_for_gamma(
 
         m = lj_pat.match(lj)
         if m:
-            # folder encodes factor × (4kT); multiply by 4 to display in kT
             lj_factor_4kT = int(m.group(1)) / 1e2
             kT_value = lj_factor_4kT * 4.0
             lj_label_base = fmt_kT(kT_value)
@@ -597,145 +606,295 @@ def plot_tethered_across_LJ_for_gamma(
 
         Lmax = None
         xs, ys_mean, ys_std = [], [], []
-        run_curves = {}   # run_id -> dict(x=[], Efin=[], E0=None)
+        run_curves = {}
 
         for sd in shear_dirs:
-            shear_val = int(sd.split('_')[1])
+            shear_int = int(sd.split('_')[1])
             sdir = os.path.join(gpath, sd)
             run_dirs = [d for d in os.listdir(sdir) if re.match(r"run_\d+$", d)] or [""]
 
-            E_finals = []
-            per_run_Efinal = {}
-            per_run_E0_candidates = {}
-
+            E_finals, per_run_Efinal, per_run_E0 = [], {}, {}
             for r in run_dirs:
                 ddir = os.path.join(sdir, r) if r else sdir
                 f = os.path.join(ddir, "positions.npz")
                 if not os.path.isfile(f):
                     continue
                 try:
-                    pos = np.load(f)["positions"]  # (T, N, D)
+                    pos = np.load(f)["positions"]
                     if Lmax is None:
                         N = pos.shape[1]
                         Lmax = N * 2.0 * a
                     Efin = tethered_max_extension_last_frame(pos, anchor)
-                    E_finals.append(Efin)
+                    print(f"[DATA] {f} -> extension={Efin:.6f}")
+
                     run_id = r if r else "run_00000"
+                    E_finals.append(Efin)
                     per_run_Efinal[run_id] = Efin
-                    if shear_val == 0:
-                        E0_run = tethered_max_extension_last_frame(pos, anchor)
-                        per_run_E0_candidates[run_id] = ("exact", E0_run)
+                    if shear_int == 0:
+                        per_run_E0[run_id] = Efin
                 except Exception as e:
                     print(f"Skip {f}: {e}")
 
             if not E_finals:
                 continue
 
-            xs.append(shear_val * dyn_visc_SI * 10.0)           # dyn/cm^2
+            xs.append(shear_int * dyn_visc_SI * 10.0)
             ys_mean.append(np.mean(E_finals))
             ys_std.append(np.std(E_finals))
+
             for run_id, Efin in per_run_Efinal.items():
                 if run_id not in run_curves:
                     run_curves[run_id] = {"x": [], "Efin": [], "E0": None}
                 run_curves[run_id]["x"].append(xs[-1])
                 run_curves[run_id]["Efin"].append(Efin)
-                if run_id in per_run_E0_candidates and per_run_E0_candidates[run_id][0] == "exact":
-                    run_curves[run_id]["E0"] = per_run_E0_candidates[run_id][1]
+                if run_id in per_run_E0:
+                    run_curves[run_id]["E0"] = per_run_E0[run_id]
 
         if not xs or Lmax is None:
             continue
 
         xs = np.array(xs, float)
-        ys_mean = np.array(ys_mean, float)
-        ys_std = np.array(ys_std, float)
-
         order = np.argsort(xs)
-        xs, ys_mean, ys_std = xs[order], ys_mean[order], ys_std[order]
-        E0_mean = ys_mean[xs == 0][0] if np.any(xs == 0) else ys_mean[0]
-        denom = Lmax - E0_mean
-        if denom <= 0 or not np.isfinite(denom):
-            print(f"[WARN] Skipping {lj_label_base}: Lmax - E0_mean <= 0 (Lmax={Lmax:.6g}, E0={E0_mean:.6g}).")
-            continue
-        y_mean_norm = (ys_mean - E0_mean) / denom
-        y_std_norm  = ys_std / denom
+        xs, ys_mean, ys_std = xs[order], np.array(ys_mean)[order], np.array(ys_std)[order]
 
-        # ---- error metrics (mean curve) BEFORE plotting so we can show χ² in legend ----
-        legend_label = lj_label_base
-        mask = (xs >= np.min(exp_x)) & (xs <= np.max(exp_x))
-        if np.any(mask):
-            y_exp = np.interp(xs[mask], exp_x, exp_y)
-            s_exp = np.interp(xs[mask], exp_x, exp_s)
-            s_exp = np.where(s_exp <= 0, 1e-12, s_exp)
-            resid = y_mean_norm[mask] - y_exp
-            sse   = float(np.sum(resid**2))
-            npt   = int(np.sum(mask))
-            mse   = sse / npt
-            rmse  = np.sqrt(mse)
-            chi2  = float(np.sum((resid / s_exp)**2))
-            chi2pp= chi2 / npt
-            legend_label = fr"{lj_label_base} ($\chi^2$/pt={chi2pp:.2f})"
-            if save_errors:
-                error_rows.append(["mean", lj_label_base, lj_label_base, npt, sse, mse, rmse, chi2, chi2pp])
-
-        # ---- plot mean curve with χ² in legend ----
         c = colors[i % len(colors)]
-        ax.plot(xs, y_mean_norm, marker='o', lw=1.6, color=c, label=legend_label)
-        if not np.all(y_std_norm == 0):
-            ax.fill_between(xs, y_mean_norm - y_std_norm, y_mean_norm + y_std_norm, color=c, alpha=0.25)
-        any_curve = True
 
-        # ---- per-run χ² (kept for CSV only; not in legend) ----
-        for run_id, dct in run_curves.items():
-            x_run = np.array(dct["x"], float)
-            Efin  = np.array(dct["Efin"], float)
-            if x_run.size < 2:
+        if aggregate_runs:
+            E0_mean = ys_mean[xs == 0][0] if np.any(xs == 0) else ys_mean[0]
+            denom = Lmax - E0_mean
+            if denom <= 0 or not np.isfinite(denom):
+                print(f"[WARN] Skipping {lj_label_base}")
                 continue
-            if dct["E0"] is not None:
-                E0_run = float(dct["E0"])
-            else:
-                E0_run = float(Efin[np.argmin(x_run)])
-            den_run = Lmax - E0_run
-            if den_run <= 0 or not np.isfinite(den_run):
-                continue
-            y_run_norm = (Efin - E0_run) / den_run
-            ord_run = np.argsort(x_run)
-            x_run, y_run_norm = x_run[ord_run], y_run_norm[ord_run]
-            maskr = (x_run >= np.min(exp_x)) & (x_run <= np.max(exp_x))
-            if not np.any(maskr):
-                continue
-            y_exp_r = np.interp(x_run[maskr], exp_x, exp_y)
-            s_exp_r = np.interp(x_run[maskr], exp_x, exp_s)
-            s_exp_r = np.where(s_exp_r <= 0, 1e-12, s_exp_r)
-            resid_r = y_run_norm[maskr] - y_exp_r
-            sse_r   = float(np.sum(resid_r**2))
-            npt_r   = int(np.sum(maskr))
-            mse_r   = sse_r / npt_r
-            rmse_r  = np.sqrt(mse_r)
-            chi2_r  = float(np.sum((resid_r / s_exp_r)**2))
-            chi2pp_r= chi2_r / npt_r
-            if save_errors:
-                error_rows.append(["run", lj_label_base, f"{lj_label_base}:{run_id}", npt_r, sse_r, mse_r, rmse_r, chi2_r, chi2pp_r])
+            y_mean_norm = (ys_mean - E0_mean) / denom
+            y_std_norm  = ys_std / denom
+
+            legend_label = lj_label_base
+            mask = (xs >= np.min(exp_x)) & (xs <= np.max(exp_x))
+            if np.any(mask):
+                y_exp = np.interp(xs[mask], exp_x, exp_y)
+                s_exp = np.interp(xs[mask], exp_x, exp_s)
+                s_exp = np.where(s_exp <= 0, 1e-12, s_exp)
+
+                resid = y_mean_norm[mask] - y_exp
+                s_sim = np.where(y_std_norm[mask] <= 0, 1e-12, y_std_norm[mask])
+
+                denom_err = s_exp**2 + s_sim**2
+                sse_scaled = float(np.sum((resid**2) / denom_err))
+                npt = int(np.sum(mask))
+                mse_scaled = sse_scaled / npt
+                rmse_scaled = float(np.sqrt(mse_scaled))
+
+                legend_label = fr"{lj_label_base} (MSE$_{{\mathrm{{comb}}}}$={mse_scaled:.3f})"
+                if save_errors:
+                    error_rows.append(["mean", lj_label_base, lj_label_base, npt,
+                                       sse_scaled, mse_scaled, rmse_scaled, float('nan'), float('nan')])
+
+            # ---- use errorbar instead of fill ----
+            ax.errorbar(xs, y_mean_norm, yerr=y_std_norm,
+                        fmt='o--', lw=1.6, markersize=4, color=c, capsize=3, label=legend_label)
+
+        else:
+            for rj, dct in sorted(run_curves.items()):
+                x_run = np.array(dct["x"], float)
+                Efin  = np.array(dct["Efin"], float)
+                if x_run.size < 2:
+                    continue
+                if dct["E0"] is not None:
+                    E0_run = float(dct["E0"])
+                else:
+                    E0_run = float(Efin[np.argmin(x_run)])
+                den_run = Lmax - E0_run
+                if den_run <= 0 or not np.isfinite(den_run):
+                    continue
+                y_run_norm = (Efin - E0_run) / den_run
+                ord_run = np.argsort(x_run)
+                x_run, y_run_norm = x_run[ord_run], y_run_norm[ord_run]
+
+                ax.errorbar(x_run, y_run_norm, yerr=None,  # no std per single run
+                            fmt='o-', lw=1.0, ms=3, color=c, alpha=0.65,
+                            label=f"{lj_label_base}:{rj}")
+
+        any_curve = True
 
     if not any_curve:
         print(f"[INFO] No usable data for {gamma_folder} under {base_dir}.")
         return
 
-    # overlay expected tethered curve
+    # expected tethered curve (keep shaded band)
     if include_expected:
-        ax.plot(exp_x, exp_y, 'k--', linewidth=2, marker='s', markersize=5, label="Fu et al. (tethered)")
-        ax.fill_between(exp_x, exp_y - exp_s, exp_y + exp_s, color='black', alpha=0.12, linewidth=0)
-
-    # ax.set_title(f"Tethered: Extension vs Shear Stress at γ={gamma_val:.4f}", fontsize=16)
+        ax.plot(exp_x, exp_y, '--', color='grey', linewidth=1,
+        marker='s', markersize=3, label="Fu et al. (tethered)")
+        ax.fill_between(exp_x, exp_y - exp_s, exp_y + exp_s, color='grey', alpha=0.2, linewidth=0)
+    ax.set_ylim(0,1.2)
     ax.set_xlabel("Wall shear stress [dyn/cm²]", fontsize=15)
     ax.set_ylabel(r"$\hat{E}^{final}_{tethered}$", fontsize=15)
-    ax.legend(fontsize=9, frameon=False)
+    ax.legend(fontsize=9, frameon=False, ncols=1 if aggregate_runs else 2)
     ax.grid(True)
     plt.tight_layout()
 
     if outname is None:
         outname = f"tethered_extension_vs_shear_across_LJ_gamma_{int(round(gamma_val*1e4)):05d}.png"
+        if not aggregate_runs:
+            outname = outname.replace(".png", "_allruns.png")
     out_png = os.path.join(base_dir, outname)
     plt.savefig(out_png, dpi=300, bbox_inches='tight')
     plt.close(fig)
     print(f"Saved {out_png}")
+
+    if save_errors:
+        if errors_name is None:
+            errors_name = outname.replace(".png", "_errors.csv")
+        csv_path = os.path.join(base_dir, errors_name)
+        with open(csv_path, "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["level","lj_label","identifier","n_points","sse","mse","rmse","chi2","chi2_per_point"])
+            for row in error_rows:
+                w.writerow(row)
+        print(f"Saved {csv_path}")
+
+
+def plot_cumulative_force_across_gammas(
+    config,
+    lj_dir,
+    target_shear,
+    avg_window=100,
+    start_from_right=30,   # how many monomers (from the chain end) to include in the cumulative
+    use_last_fraction=0.25 # take last 25% of time series for averaging; set None for full length
+):
+    """
+    Plot cumulative tensile force vs monomer index for all gamma_* in lj_dir at a given shear,
+    and compute a normalized MSE = mean((diff/sigma_ref)^2), i.e. squared error divided
+    by the squared reference uncertainty.
+    """
+    import os, re
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    plt.style.use("seaborn-v0_8-whitegrid")
+    #color_cycle = plt.get_cmap("tab20").colors
+    color_cycle = plt.get_cmap("tab20b").colors
+    color_cycle = plt.get_cmap("Dark2").colors
+
+    TIMESTEP = config["simulation"]["TIME_STEP"]
+    STEPS    = config["simulation"]["STEPS"]
+    dt = 1e-4 * TIMESTEP * STEPS
+
+    lj_match = re.search(r"LJ_(\d{5})", lj_dir)
+    lj_text = f"Lennard Jones potential = {int(lj_match.group(1))/1e2:.2f} × 4kT" if lj_match else ""
+
+    gamma_dirs = [d for d in os.listdir(lj_dir) if os.path.isdir(os.path.join(lj_dir, d)) and d.startswith("gamma_")]
+    def _gkey(g):
+        m = re.match(r"gamma_(\d+)", g)
+        return int(m.group(1)) if m else 0
+    gamma_dirs.sort(key=_gkey)
+
+    def _gamma_float(name):
+        m = re.match(r"gamma_(\d+)", name)
+        return (int(m.group(1)) / 1e4) if m else None
+
+    def _load_forces_npz(path):
+        try:
+            return np.load(path)["forces"]  # (T, N, 3)
+        except Exception as e:
+            print(f"Failed to read {path}: {e}")
+            return None
+
+    N_detect = None
+    blocks = {}
+
+    for gdir in gamma_dirs:
+        gval = _gamma_float(gdir)
+        if gval is None:
+            continue
+
+        shear_dir = os.path.join(lj_dir, gdir, f"shear_{target_shear}")
+        fpath = os.path.join(shear_dir, "drag_forces.npz")
+        if not os.path.isfile(fpath):
+            print(f"[skip] {fpath} not found")
+            continue
+
+        F = _load_forces_npz(fpath)
+        if F is None:
+            continue
+
+        if N_detect is None:
+            N_detect = F.shape[1]
+        N_use = min(N_detect, F.shape[1])
+
+        Fmag = np.linalg.norm(F[:, :N_use, :], axis=2) * 1000.0
+        Fm   = moving_average_centered(Fmag, avg_window)
+
+        if use_last_fraction is not None and 0 < use_last_fraction <= 1.0:
+            nL = max(int(len(Fm) * use_last_fraction), 1)
+        else:
+            nL = len(Fm)
+        tail = Fm[-nL:, :] if nL > 0 else Fm
+
+        blocks[gval] = tail
+
+    if not blocks:
+        print("No usable force data found for this LJ folder and shear.")
+        return {}
+
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    idx = np.arange(0, N_detect)
+    start = min(start_from_right, N_detect)
+
+    # Reference line (0.5 pN/monomer cumulatively) and uncertainty
+    steps_from_right = (start - np.arange(1, start+1) + 1)
+    ref = np.full(N_detect, np.nan)
+    ref[:start] = 0.5 * steps_from_right
+    sigma_ref = np.full(N_detect, np.nan)
+    sigma_ref[:start] = 0.1 * steps_from_right   # grows linearly with steps
+
+    mse_by_gamma = {}
+
+    for i, (gval, block) in enumerate(sorted(blocks.items(), key=lambda kv: kv[0])):
+        sub = block[:, :start][:, ::-1]
+        cum = np.cumsum(sub, axis=1)[:, ::-1]
+        mu  = cum.mean(axis=0)
+        sig = cum.std(axis=0)
+
+        # --- Normalized MSE: divide by sigma_ref^2 ---
+        diff = mu - ref[:start]
+        norm_mse = float(np.mean((diff / sigma_ref[:start])**2))
+        mse_by_gamma[gval] = norm_mse
+
+        y = np.full(N_detect, np.nan); e = np.full(N_detect, np.nan)
+        y[:start], e[:start] = mu, sig
+
+        ax.errorbar(
+            idx, y, yerr=e,
+            marker='o', lw=1.2, elinewidth=1, capsize=3, markersize=3,
+            color=color_cycle[i % len(color_cycle)],
+            label=fr"$\gamma$={gval:.4f}" + r" ($MSE^{*}$="+ f"{round(norm_mse,2)})"
+        )
+
+    # Reference + band
+    mask = ~np.isnan(ref)
+    ax.plot(idx, ref, '--', lw=1.2, color='pink', label=r"Fu et al. $0.5 \pm 0.1$ pN/mono")
+    ax.fill_between(idx[mask], ref[mask] - sigma_ref[mask], ref[mask] + sigma_ref[mask], alpha=0.5, color="pink")
+
+    ax.set_xlabel("Monomer index", fontsize=15)
+    ax.set_ylabel("Tensile force [pN]", fontsize=15)
+    ax.set_xticks(np.arange(0, N_detect+1, 5))
+    ax.set_xlim(-1, max(30, N_detect))
+    ax.grid(True)
+    ax.legend(frameon=False, fontsize=12, ncol=1)
+    title_top = f"Cumulative force vs monomer index (shear={target_shear})"
+    if lj_text:
+        title_top += f"\n{lj_text}"
+    # plt.title(title_top, fontsize=14)
+    plt.tight_layout()
+
+    out = os.path.join(lj_dir, f"force_cumulative_vs_monomer_all_gamma_shear_{target_shear}.png")
+    plt.savefig(out, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    print(f"Saved {out}")
+
+    print("== Normalized MSE per gamma ==")
+    for gval in sorted(mse_by_gamma):
+        print(f"  gamma={gval:.4f}: MSE = {mse_by_gamma[gval]:.6g}")
+
+    return mse_by_gamma
 

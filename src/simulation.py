@@ -72,13 +72,13 @@ def lb_drag_forces(system, lb, gamma, ids):
     return -gamma * (vel - u)
 
 
-def build_polymers(system, run_type, n_monomers, n_polymers, start_positions, positions, fene, bond_length, TETHERED=True):
+def build_polymers(system, run_type, n_monomers, n_polymers, start_positions, positions, fene, bond_length, SEED, TETHERED=True):
 
     if run_type=="validation_uncoiling":
         logging.info("Building coiled up linear polymer (validation uncoiling).")
         positions = espressomd.polymer.linear_polymer_positions(n_polymers=n_polymers, 
             beads_per_chain=n_monomers, start_positions=start_positions, respect_constraints=True,
-            bond_length=bond_length, seed=42)
+            bond_length=bond_length, seed=SEED)
     
     for j in range(n_polymers):
         p_previous = None
@@ -116,6 +116,7 @@ def run_simulation(params,run_type):
     SHEAR = sim["SHEAR"] * 1e-4  # Convert units if needed
     save_VTK = sim["SAVE_VTK"]
     minimization_steps = sim["MINIMIZATION_STEPS"]
+    SEED = sim["SEED"]
 
     # Physical parameters
     KT = phys["KT"]
@@ -133,20 +134,27 @@ def run_simulation(params,run_type):
     geo_cylinder = geom.get("CYLINDER", False)
     radius_object = geom.get("RADIUS_OBJECT", 3)
 
-    VELOCITY = SHEAR * (BOX_Lz - AGRID)
-    VELOCITY2 = sim["VELOCITY"]
+    VELOCITY = sim["VELOCITY"]
     outdir = DIRECTORY + f'/vtk_data/'
 
     if save_VTK:
         os.makedirs(outdir, exist_ok=True)
 
-    logging.info(f"Running simulation: shear={int(SHEAR*1e4)}, n_polymers={N_POLYMERS}, n_monomers={N_MONOMERS}, gridsize={AGRID}, timestep={TIME_STEP}, viscosity={VISC}")
-    logging.info(f"Running simulation: VELOCITY={VELOCITY}, VELOCITY={VELOCITY2}")
+    MA = (np.sqrt(3) * VELOCITY * TIME_STEP * 5) / AGRID
+    logging.info(f"Running simulation: shear={int(SHEAR*1e4)}, n_polymers={N_POLYMERS}, n_monomers={N_MONOMERS}, "\
+    f"gridsize={AGRID}, MD_timestep={TIME_STEP}, LB_timestep={TIME_STEP*5}, viscosity={VISC}, seed={SEED}, velocity={VELOCITY}, "\
+    f"Ma={MA}")
+
+
+    vals = lb_units_and_gammas(agrid=AGRID, tau=TIME_STEP*5, nu_md=VISC)
+    for val, v in vals.items():
+        logging.info(f"{val}: {v}")
+
 
     system = espressomd.System(box_l=[BOX_Lx, BOX_Ly, BOX_Lz], periodicity=[True, True, False])
     
     # print("Total ranks:", system.cell_system.get_state()["n_nodes"])
-    print(system.cell_system.get_state())
+    logging.info(system.cell_system.get_state())
 
     system.cell_system.skin = 0.4
     system.time_step = TIME_STEP
@@ -178,7 +186,7 @@ def run_simulation(params,run_type):
 
     # Polymers
     logging.info("Build Polymer(s).")
-    build_polymers(system, run_type, N_MONOMERS, N_POLYMERS, START_POSITIONS, POSITIONS, fene, r_0, TETHERED)
+    build_polymers(system, run_type, N_MONOMERS, N_POLYMERS, START_POSITIONS, POSITIONS, fene, r_0, SEED, TETHERED)
     system.non_bonded_inter[0, 1].soft_sphere.set_params(a=1e-3, n=1.2, offset=0, cutoff=2 * phys["a"])
 
     particle_ids = [p.id for p in system.part.select(type=0)]
@@ -271,9 +279,6 @@ def run_simulation(params,run_type):
     # system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_up_lb_vel, velocity=[0, 0, 0]))
     # system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_down_lb_vel, velocity=[0, 0, 0]))
     # Example with your values:
-    vals = lb_units_and_gammas(agrid=AGRID, tau=TIME_STEP*5, nu_md=VISC)
-    for k, v in vals.items():
-        print(f"{k}: {v}")
 
     # Main simulation loop
     logging.info("Run simulation.")
