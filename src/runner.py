@@ -124,12 +124,12 @@ def add_timeloops_from_gridsize(config):
     total_time = config["simulation"]["TOTAL_TIME"] # seconds
     time_unit = 1e-4 # seconds
     total_sim_time = total_time / time_unit
-    time_step = config["simulation"]["TIME_STEP"] * gridsize ** 3
+    time_step = config["simulation"]["TIME_STEP"] 
     
     config["simulation"]["TIME_STEP"] = time_step
     LOOPS = total_sim_time / (time_step * steps)
     config["simulation"]["LOOPS"] = LOOPS
-    
+
     print(f"gridsize={gridsize}, loops={LOOPS}, steps={steps}")
     
 if __name__ == "__main__":
@@ -141,31 +141,44 @@ if __name__ == "__main__":
         shear = float(sys.argv[2])
         gridsize = float(sys.argv[3])
         run = int(sys.argv[4])
+        save_dir = str(sys.argv[5])
 
         config["simulation"]["SEED"] = run
         config["simulation"]["SHEAR"] = shear
         config["geometry"]["AGRID"] = gridsize
         config["simulation"]["N_POLYMERS"] = 2
+        config["simulation"]["stdev_initial_pos"] = 0.01
+        config["simulation"]["TOTAL_TIME"] = 0.1
+        # config["physical"]["k"] = 650
+        # config["physical"]["k"] = 6.5
+        # config["simulation"]["SAVE_VTK"] = True
+        
+        # reduce time step for run with gridsize = 0.25 and increase minimization steps
+        if gridsize==0.25:
+            config["simulation"]["TIME_STEP"] = 0.000125/2
+
         np.random.seed(config["simulation"]["SEED"])
 
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength=1)
-        config["output"]["DIRECTORY"] = f"./data/test_grids_stdev001/grid_{int(gridsize*1e2):05d}/shear_{int(shear):05d}/run_{run}/"
+        config["output"]["DIRECTORY"] = f"./{save_dir}/grid_{int(gridsize*1e2):05d}/shear_{int(shear):05d}/run_{run}/"
         add_polymer_positions(config, run_type)
 
     if run_type == "validation_uncoiling":
         shear = float(sys.argv[2])
         gamma = float(sys.argv[3])
         LJ_strength = float(sys.argv[4])
-        gridsize = float(sys.argv[5])
-        save_dir = str(sys.argv[6])
+        save_dir = str(sys.argv[5])
 
         # set parameters to match the validation data from Fu et al.
         config["simulation"]["SHEAR"] = shear
         config["physical"]["GAMMA"] = gamma
         config["simulation"]["N_POLYMERS"] = 1
-        config["geometry"]["AGRID"] = gridsize
-
+        config["geometry"]["AGRID"] = 1
+        # for uncoiling for uncoiling_100K
+        # config["physical"]["k"] = 6.5
+        # for uncoiling_10000K
+        config["physical"]["k"] = 650
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
         config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}"
@@ -176,20 +189,34 @@ if __name__ == "__main__":
         shear = float(sys.argv[2])
         gamma = float(sys.argv[3])
         LJ_strength = float(sys.argv[4])
-        gridsize = float(sys.argv[5])
-        save_dir = str(sys.argv[6])
+        save_dir = str(sys.argv[5])
 
         # set parameters to match the validation data from Schneider et al.
         config["simulation"]["SHEAR"] = shear
         config["physical"]["GAMMA"] = gamma
-        # config["physical"]["N_MONOMERS"] = 150
-        # config["geometry"]["BOX_Lx"] = 100
-        # config["geometry"]["BOX_Ly"] = 20
-        # config["geometry"]["BOX_Lz"] = 20
+        config["physical"]["N_MONOMERS"] = 150
+        # large box to fit N_monomer=150 polymer
+        config["geometry"]["BOX_Lx"] = 64
+        config["geometry"]["BOX_Ly"] = 32
+        config["geometry"]["BOX_Lz"] = 32
         config["simulation"]["N_POLYMERS"] = 1
-        config["geometry"]["AGRID"] = gridsize
+        config["geometry"]["AGRID"] = 1
+        # need to decrease timestep due to large boxsize 
+        # (i.e. large Ma number for LB for high shear rates)
+        config["simulation"]["TIME_STEP"] = 0.00025
         config["simulation"]["TETHERED"] = False
-        config["simulation"]["TOTAL_TIME"] = 0.8
+        config["simulation"]["TOTAL_TIME"] = 0.4
+        # extra minimization steps needed for the large polymer
+        config["simulation"]["MINIMIZATION_STEPS"] = 1000
+        # large Fene spring constant because a lot of 
+        # overextension due to big size of polymer
+        config["physical"]["k"] = 650
+
+        # increased steps in simulation to save the data (to run for vtk)
+        # since otherwise the file will be too big
+        config["simulation"]["SAVE_VTK"] = True
+        config["simulation"]["STEPS"] = 10000
+
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
         config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}"
@@ -201,7 +228,7 @@ if __name__ == "__main__":
         gridsize = float(sys.argv[4])
         save_dir = str(sys.argv[5])
 
-        # for coiling, the experimental data added 60% sucrose, so need to account for that in the runs
+        # for recoiling, the experimental data added 60% sucrose, increased viscosity and density
         config["fluid"]["VISC"] = config["fluid"]["VISC"] * 58
         config["fluid"]["DENS"] = 0.00013
         config["physical"]["GAMMA"] = gamma
@@ -224,15 +251,19 @@ if __name__ == "__main__":
         save_dir = str(sys.argv[6])
 
         config["simulation"]["SAVE_VTK"] = True
-        config["geometry"]["BOX_Lx"] = 56
-        config["geometry"]["BOX_Ly"] = 24
-        config["geometry"]["BOX_Lz"] = 24
+        config["geometry"]["BOX_Lx"] = 64
+        config["geometry"]["BOX_Ly"] = 32
+        config["geometry"]["BOX_Lz"] = 32
+        config["physical"]["N_MONOMERS"] = 150
         config["simulation"]["SHEAR"] = shear
         config["physical"]["GAMMA"] = gamma
         config["simulation"]["N_POLYMERS"] = 1
         config["geometry"]["AGRID"] = gridsize
-        config["simulation"]["TOTAL_TIME"] = 0.8
+        config["simulation"]["TOTAL_TIME"] = 0.4
+        # needed to decrease of timestep due to large boxsize (i.e. large Ma number for LB for high shear rates)
+        config["simulation"]["TIME_STEP"] = 0.00025
         config["physical"]["k"] = 650
+        config["simulation"]["MINIMIZATION_STEPS"] = 1000
         config["simulation"]["TETHERED"] = False
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)

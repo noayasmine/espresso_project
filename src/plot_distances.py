@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Parent data folder
-base_root = "data/test_grids"
+base_root = "data/test_grids_stdev001"
 
 # List of grid size folders
 grid_folders = sorted(
@@ -47,8 +47,9 @@ for grid_folder in grid_folders:
         avg_distances.append(avg_distance)
 
     # Label: extract numeric grid size from folder name
+
     grid_size_value = int(grid_folder.split("_")[2]) / 100
-    grid_labels.append(f"Grid {grid_size_value:.2f}")
+    grid_labels.append(f"Grid {grid_size_value:.2f}" + r" $\mu m$")
 
     # Plot shear vs avg distance
     plt.plot(shear_rates, avg_distances, marker='o', label=f"Grid {grid_size_value:.2f}")

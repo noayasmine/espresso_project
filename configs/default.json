@@ -4,7 +4,7 @@
     "GAMMA": 0.005,
     "N_MONOMERS": 30,
     "a": 0.05,
-    "k": 6.5,
+    "k": 0.065,
     "d_r_max": 0.3,
     "shift": "auto",
     "VISC_dyn": 0.11

@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import os
 import re
 import json
+# import seaborn
 
 def compute_avg_polymer_distance(npz_path, n_polymers=2, monomers_per_polymer=30):
     try:
@@ -35,7 +36,10 @@ def plot_grid_results_avg(config, base_dir, plot_mode="mean_std"):
     assert plot_mode in {"mean_std", "individual"}, "Invalid plot_mode. Choose 'mean_std' or 'individual'."
 
     plt.style.use("seaborn-v0_8-whitegrid")
-    color_cycle = plt.get_cmap("tab10").colors
+    # color_cycle = plt.get_cmap("tab10").colors
+
+    color_cycle = plt.get_cmap("Dark2").colors[:3]
+
 
     grid_pattern = re.compile(r"grid_(\d+)")
     shear_pattern = re.compile(r"shear_(\d+)")
@@ -51,7 +55,11 @@ def plot_grid_results_avg(config, base_dir, plot_mode="mean_std"):
 
         grid_value = int(grid_match.group(1)) / 100.0
         grid_path = os.path.join(base_dir, grid_folder)
-        TIMESTEP = config["simulation"]["TIME_STEP"] * grid_value ** 3
+        TIMESTEP = config["simulation"]["TIME_STEP"] # * grid_value ** 3
+        
+        if grid_value==0.25:
+            #TIMESTEP = 0.000125/2
+            continue
 
         for shear_folder in sorted(os.listdir(grid_path)):
             shear_match = shear_pattern.match(shear_folder)
@@ -73,7 +81,6 @@ def plot_grid_results_avg(config, base_dir, plot_mode="mean_std"):
                         dt = 1e-4 * TIMESTEP * STEPS
                         time_s = np.arange(len(avg_distances)) * dt
                         run_curves.append(avg_distances)
-            run_curves = run_curves[0:10]
             print(len(run_curves))
             if run_curves:
                 try:
@@ -92,7 +99,7 @@ def plot_grid_results_avg(config, base_dir, plot_mode="mean_std"):
                     print(f"Error stacking data for shear={shear_value}, grid={grid_value}: {e}")
 
     n_subplots = len(shear_data)
-    fig, axes = plt.subplots(n_subplots, 1, figsize=(10, 4 * n_subplots), sharex=True)
+    fig, axes = plt.subplots(n_subplots, 1, figsize=(6, 2 * n_subplots), sharex=True)
 
     if n_subplots == 1:
         axes = [axes]
@@ -122,16 +129,17 @@ def plot_grid_results_avg(config, base_dir, plot_mode="mean_std"):
                 label = f"grid={grid_value} run={run_idx}"
                 ax.plot(time_s, run_curve, label=label,
                         alpha=0.7, linewidth=1.5)
-
-        ax.set_title(f"Shear Rate = {shear_value}" + r" [$s^{-1}$]", fontsize=14)
-        ax.set_ylabel(r"Avg. Distance [$\mu$m]", fontsize=12)
-        ax.tick_params(axis='both', labelsize=10)
+        shearrate_str = r"$\dot \gamma$"
+        ax.set_title(f"{shearrate_str} = {shear_value}" + r" [$s^{-1}$]", fontsize=17)
+        ax.set_ylabel(r"$\langle d \rangle $ [$\mu$m]", fontsize=20)
+        ax.tick_params(axis='both', labelsize=18)
         ax.grid(True)
-        ax.legend(fontsize=10, frameon=False)
+        if shear_value==1000:
+            ax.legend(fontsize=15, frameon=False)
 
-    axes[-1].set_xlabel("Time [s]", fontsize=12)
+    axes[-1].set_xlabel("Time [s]", fontsize=20)
     title_mode = "Mean ± Std" if plot_mode == "mean_std" else "Individual Runs"
-    fig.suptitle(f"Polymer Separation Over Time ({title_mode})", fontsize=16)
+    #fig.suptitle(f"Polymer Separation Over Time ({title_mode})", fontsize=25)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
 
     save_suffix = "mean_std" if plot_mode == "mean_std" else "individual"

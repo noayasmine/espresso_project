@@ -136,6 +136,7 @@ def run_simulation(params,run_type):
     VELOCITY = SHEAR * (BOX_Lz - AGRID)
     VELOCITY2 = sim["VELOCITY"]
     outdir = DIRECTORY + f'/vtk_data/'
+
     if save_VTK:
         os.makedirs(outdir, exist_ok=True)
 
@@ -195,8 +196,6 @@ def run_simulation(params,run_type):
     system.integrator.set_steepest_descent(f_max=0, gamma=0.001, max_displacement=0.0001 * sigma)
 
     if run_type=="validation_uncoiling":
-        # espressomd.comfixed.ComFixed(types=np.array([0]))
-
         logging.info("Energy minimization.")
 
         if save_VTK:
@@ -209,7 +208,6 @@ def run_simulation(params,run_type):
             for i in range(minimization_steps):
                 print(f"step {i + 1} of {minimization_steps}", end='\r', flush=True)
                 system.integrator.run(STEPS)
-
 
     if run_type=="validation_coiling" or run_type=="test_gridsizes":
         logging.info("Energy minimization.")
@@ -229,6 +227,7 @@ def run_simulation(params,run_type):
 
     # LB Fluid setup
     # lbf = espressomd.lb.LBFluid(kT=0, seed=42, agrid=AGRID, dens=DENS, visc=VISC, tau=TIME_STEP)
+
     lbf = espressomd.lb.LBFluid(kT=0, seed=42, agrid=AGRID, dens=DENS, visc=VISC, tau=TIME_STEP*5)
     system.actors.add(lbf)
     system.thermostat.set_lb(LB_fluid=lbf, gamma=GAMMA, seed=42)
@@ -245,7 +244,8 @@ def run_simulation(params,run_type):
         logging.info(f"LB setup for uncoiling validation (nonzero fluid velocity)")
         lb_boundary_up = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_up_lb, velocity=[0, 0, 0]))
         lb_boundary_down = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_down_lb, velocity=[VELOCITY, 0, 0]))
-    
+        
+
     # Observables
     # particle_ids = [p.id for p in system.part.select(type=0)]
     # forces = espressomd.observables.ParticleForces(ids=particle_ids)
@@ -275,12 +275,11 @@ def run_simulation(params,run_type):
     for k, v in vals.items():
         print(f"{k}: {v}")
 
-
     # Main simulation loop
     logging.info("Run simulation.")
     start_time = time.time()
     WINDOW_FRAMES = 10
-    forces_traj = np.empty((int(LOOPS), N_MONOMERS, 3), dtype=np.float32)
+    forces_traj = np.empty((int(LOOPS), int(N_POLYMERS * N_MONOMERS), 3), dtype=np.float32)
 
     if save_VTK:
         for i in range(int(LOOPS)):

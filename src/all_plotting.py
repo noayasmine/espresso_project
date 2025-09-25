@@ -7,6 +7,13 @@ def min_image_1d(dr, L):
     """Minimum-image in 1D."""
     return dr if (L is None or L <= 0) else dr - np.round(dr / L) * L
 
+def _normalize_to_Lmax(E, Lmax):
+    E0 = E[0]
+    den = Lmax - E0
+    if den <= 0 or not np.isfinite(den):
+        den = np.finfo(float).eps
+    return (E - E0) / den
+
 def unwrap_frame(pos, Lx=None, Ly=None, Lz=None):
     """Unwrap a single frame (N,D) by building it from minimum-image bond vectors."""
     N, D = pos.shape
@@ -70,7 +77,7 @@ def moving_average_centered(x, N):
 
 # ---------- Validation plot (dynamic N + optional Box_Lx override + free_metric) ----------
 def plot_validation_results(config, base_dir, validation_type="free",
-                            Box_Lx=None, free_metric="max_pairwise",
+                            Box_Lx=None, free_metric="end_to_end",
                             target_gamma=None):
     """
     Aggregate extension per shear and plot normalized vs wall shear stress.
@@ -83,7 +90,9 @@ def plot_validation_results(config, base_dir, validation_type="free",
     target_gamma: optional; filter to a single gamma. Accepts e.g. 0.0050 or "gamma_00050".
     """
     plt.style.use("seaborn-v0_8-whitegrid")
-    color_cycle = plt.get_cmap("tab10").colors
+
+
+    color_cycle = plt.get_cmap("tab20").colors
 
     a = config["physical"]["a"]
     dyn_visc_SI = config["physical"]["VISC_dyn"] / 10
@@ -131,7 +140,7 @@ def plot_validation_results(config, base_dir, validation_type="free",
         else:
             print(f"[INFO] target_gamma={target_gamma} not found; plotting all gammas.")
 
-    fig, ax = plt.subplots(figsize=(10,6))
+    fig, ax = plt.subplots(figsize=(8,4))
     for gi, gname in enumerate(gamma_dirs):
         gamma_val = int(gamma_pattern.match(gname).group(1)) / 1e4
         gpath = os.path.join(base_dir, gname)
@@ -155,9 +164,10 @@ def plot_validation_results(config, base_dir, validation_type="free",
                     continue
                 try:
                     pos = np.load(f)["positions"]  # (T,N,D)
-                    if Lmax_gamma is None:
-                        N = pos.shape[1]
-                        Lmax_gamma = N * 2 * a
+                    print(f"N monomers = {pos.shape[1]}")
+                    # if Lmax_gamma is None:
+                    #     N = pos.shape[1]
+                    #     Lmax_gamma = N * 2 * a
 
                     if str(validation_type).lower() == "tethered":
                         finals.append(tethered_max_extension_ts(pos)[-1])
@@ -171,6 +181,10 @@ def plot_validation_results(config, base_dir, validation_type="free",
 
             if not finals:
                 continue
+
+            # ADD THIS right after `if not finals: continue`
+            Lmax_gamma = np.max(finals) if Lmax_gamma is None else max(Lmax_gamma, np.max(finals))
+
             shears.append(shear_label * dyn_visc_SI * 10)     # -> dyn/cm^2
             means.append(np.mean(finals)); stds.append(np.std(finals))
 
@@ -201,7 +215,7 @@ def plot_validation_results(config, base_dir, validation_type="free",
         expected_y = np.array([0.00, 0.35, 0.55, 0.63, 0.70, 0.75, 0.81, 0.85, 0.90, 0.92, 0.94, 0.96, 0.96, 0.96], dtype=float)
         expected_std = np.array([0.1, 0.2, 0.2, 0.25, 0.3, 0.35, 0.35, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3], dtype=float)
         ax.plot(expected_x, expected_y, linestyle='--', color='black', linewidth=2,
-                marker='s', markersize=5, label="Expected (tethered)")
+                marker='s', markersize=5, label="Expected")
         ax.fill_between(expected_x, expected_y - expected_std, expected_y + expected_std,
                         color='black', alpha=0.12, linewidth=0)
 
@@ -210,23 +224,30 @@ def plot_validation_results(config, base_dir, validation_type="free",
         expected_y = np.array([0,0,0,0,0,0.75,1], dtype=float)
         expected_std = np.array([0.1,0.1,0.1,0.1,0.1,0.2,0.2], dtype=float)
         ax.plot(expected_x, expected_y, linestyle='--', color='black', linewidth=2,
-                marker='s', markersize=5, label="Expected (free)")
+                marker='s', markersize=5, label="Schneider et al.")
         ax.fill_between(expected_x, expected_y - expected_std, expected_y + expected_std,
                         color='black', alpha=0.12, linewidth=0)
 
     title_suffix = ""
+    # if str(validation_type).lower() == "free":
+    #     title_suffix = f" (free metric: {'end-to-end' if free_metric=='end_to_end' else 'max-pairwise'})"
+    # ax.set_title(f"Final Polymer Extension vs Shear Rate{title_suffix}\n{lj_title}", fontsize=25)
     if str(validation_type).lower() == "free":
-        title_suffix = f" (free metric: {'end-to-end' if free_metric=='end_to_end' else 'max-pairwise'})"
-    ax.set_title(f"Final Polymer Extension vs Shear Rate{title_suffix}\n{lj_title}", fontsize=16)
-    ax.set_xlabel("Wall shear stress [dyn/cm²]"); ax.set_ylabel("Total extension (normalized)")
+        ax.set_xlabel("Wall shear stress [dyn/cm²]",fontsize=15)
+        ax.set_ylabel(r"$\hat{E}^{final}_{free}$", fontsize=15)
+    else:
+        ax.set_xlabel("Wall shear stress [dyn/cm²]",fontsize=15)
+        ax.set_ylabel(r"$\hat{E}^{final}_{tethered}$", fontsize=15)
     ax.legend(fontsize=10, frameon=False); ax.grid(True); plt.tight_layout()
     out = os.path.join(base_dir, "extension_vs_shearstress_test.png")
     plt.savefig(out, dpi=300, bbox_inches='tight'); plt.close(fig)
     print(f"Plot saved to {out}")
 
+
+
 # ---------- Time series (dynamic N + optional Box_Lx override + free_metric) ----------
-def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=50,
-                     validation_type="free", Box_Lx=None, free_metric="max_pairwise"):
+def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=1,
+                     validation_type="free", Box_Lx=None, free_metric="end_to_end", time_step=None, k_fene=6.5):
     """
     plot_type = 'extension' (normalized extension over time),
                 'force'     (per-monomer + cumulative summary; smoothed)
@@ -238,10 +259,13 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
     Box_Lx: optional override for x-box length in PBC handling (free case).
     """
     plt.style.use("seaborn-v0_8-whitegrid")
-    color_cycle = plt.get_cmap("tab10").colors
+    color_cycle = plt.get_cmap("tab20").colors
 
     a = config["physical"]["a"]
     TIMESTEP = config["simulation"]["TIME_STEP"]; STEPS = config["simulation"]["STEPS"]
+    if time_step != None:
+        TIMESTEP = time_step
+
     dt = 1e-4 * TIMESTEP * STEPS
 
     # box lengths for PBC (free case)
@@ -284,7 +308,7 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
                 y = E / E0
                 t = np.arange(len(y)) * dt
                 ax.plot(t, y, label=f"γ={gamma_val:.4f}",
-                        color=plt.get_cmap('tab10').colors[i % 10], lw=1.5)
+                        color=plt.get_cmap('tab10').colors[i % 20], lw=1.5)
             except Exception as e:
                 print(f"Error reading {f}: {e}")
 
@@ -302,19 +326,28 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
 
     # ----- Extension (plot all shears; dynamic N per shear) -----
     if plot_type == "extension":
-        fig, ax = plt.subplots(figsize=(10,6))
+        fig, ax = plt.subplots(figsize=(6,4))
         for i, sd in enumerate(shear_dirs_all):
             f = os.path.join(base_dir, sd, "positions.npz")
             if not os.path.isfile(f): continue
             try:
                 pos = np.load(f)["positions"]  # (T,N,D)
                 N_here = pos.shape[1]
+                print(f"N monomers = {N_here}")
                 Lmax = N_here * 2 * a
 
                 vtype = str(validation_type).lower()
+                # if vtype == "tethered":
+                #     E = tethered_max_extension_ts(pos, anchor=0)      # tethered metric (no PBC), normalize E/Lmax
+                #     y = E / Lmax
                 if vtype == "tethered":
-                    E = tethered_max_extension_ts(pos, anchor=0)      # tethered metric (no PBC), normalize E/Lmax
-                    y = E / Lmax
+                    E = tethered_max_extension_ts(pos, anchor=0)
+                    E0 = E[0]
+                    den = Lmax - E0
+                    if den <= 0:
+                        den = np.finfo(float).eps
+                    y = (E - E0) / den
+
                 else:
                     # FREE: choose metric, PBC-safe; normalize as (E - E0)/(Lmax - E0)
                     if free_metric == "end_to_end":
@@ -327,15 +360,19 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
                     y = (E - E0) / den
 
                 t = np.arange(len(y)) * dt
-                lbl = f"{sd.split('_')[1]} 1/s"
+                shear_int = int(sd.split('_')[1])
+
+                lbl = f"{shear_int} " + r"$s^{-1}$"
                 if vtype == "free":
                     lbl += f" ({'end-to-end' if free_metric=='end_to_end' else 'max-pairwise'})"
-                ax.plot(t, y, label=lbl, color=color_cycle[i % 10], lw=1.5)
+                ax.plot(t, y, label=lbl, color=color_cycle[i % 20], lw=1.5)
             except Exception as e:
                 print(f"Skip {f}: {e}")
-        ax.set_title(f"Extension over time\n{subtitle}", fontsize=16)
-        ax.set_xlabel("Time [s]"); ax.set_ylabel("Normalized extension")
-        if ax.has_data(): ax.legend(frameon=False, fontsize=10)
+        # ax.set_title(f"Extension over time\n{subtitle}", fontsize=16)
+        ax.set_title(r"$k_{FENE}$=" + f"{k_fene}" + "mN/m", fontsize=16)
+        ax.set_xlabel("Time [s]", fontsize=15); ax.set_ylabel(r"$\hat{E}_{teth}$", fontsize=15)
+        
+        if ax.has_data(): ax.legend(frameon=False, fontsize=10, ncol=2)
         ax.grid(True); plt.tight_layout()
         out = os.path.join(base_dir, "extension_time_test.png")
         plt.savefig(out, dpi=300, bbox_inches='tight'); plt.close(fig); print(f"Saved {out}")
@@ -383,8 +420,11 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
                 Fmag = np.linalg.norm(F[:, :N_use, :], axis=2) * 1000   # pN
                 Fm = moving_average_centered(Fmag, avg_window)          # centered, same length
                 t = np.arange(len(Fm)) * dt
+
+                # Take the last quarter of temporal data (i.e. when the data has equilibrated)
                 nL = int(len(Fm)/4) if len(Fm)>0 else 0
-                c = color_cycle[i % 10]
+                
+                c = color_cycle[i % 20]
                 for m in range(N_use):
                     if nL>0:
                         axs[m].plot(t[-nL:], Fm[:,m][-nL:], lw=1.2, color=c, label=f"{sd.split('_')[1]} 1/s")
@@ -401,22 +441,41 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
         plt.savefig(out, dpi=300, bbox_inches='tight'); plt.close(fig); print(f"Saved {out}")
 
         if lastN:
-            fig, ax = plt.subplots(figsize=(10,6))
-            idx = np.arange(1, N_detect+1); start = min(30, N_detect)
+            fig, ax = plt.subplots(figsize=(6,4))
+            idx = np.arange(0, N_detect); start = min(30, N_detect)
             for i, (sd, block) in enumerate(sorted(lastN.items(), key=lambda x: int(x[0].split('_')[1]))):
-                c = color_cycle[i % 10]
+                c = color_cycle[i % 20]
                 sub = block[:, :start][:, ::-1]
                 cum = np.cumsum(sub, axis=1)[:, ::-1]
                 mu, sig = cum.mean(0), cum.std(0)
                 y = np.full(N_detect, np.nan); e = np.full(N_detect, np.nan)
                 y[:start], e[:start] = mu, sig
+                # ax.errorbar(idx, y, yerr=e, marker='o', lw=1.5, elinewidth=1, capsize=3,
+                #             color=c, label=f"{sd.split('_')[1]} 1/s")
                 ax.errorbar(idx, y, yerr=e, marker='o', lw=1.5, elinewidth=1, capsize=3,
-                            color=c, label=f"{sd.split('_')[1]} 1/s")
-            ref = np.full(N_detect, np.nan); ref[:start] = 0.5 * (start - np.arange(1,start+1) + 1)
-            ax.plot(idx, ref, '--', lw=1.2, label=f"Target: 0.5 pN/step from M{start}")
-            ax.set_title(f"Cumulative force vs monomer index\n{subtitle}", fontsize=16)
-            ax.set_xlabel("Monomer index"); ax.set_ylabel("Cumulative force [pN]")
-            ax.set_xticks(idx); ax.grid(True); ax.legend(frameon=False, fontsize=10)
+                             color="black", markersize=4, label=r"1280 $dyn$ $cm^{-2}$")
+            # ref = np.full(N_detect, np.nan); ref[:start] = 0.5 * (start - np.arange(1,start+1) + 1)
+            ref = np.full(N_detect, np.nan)
+            # steps from the right: start, start-1, ..., 1 (for the first `start` monomers)
+            steps_from_right = (start - np.arange(1, start+1) + 1)  # length = start
+            ref[:start] = 0.5 * steps_from_right                     # 0.5 pN per monomer cumulatively
+
+            # cumulative std: 0.1 pN per monomer => grows linearly with steps
+            sigma = np.full(N_detect, np.nan)
+            sigma[:start] = 0.1 * steps_from_right
+
+
+            ax.plot(idx, ref, '--', lw=1.2, color="pink", label=r"Fu et al. $0.5 \pm 0.1$ pN/monomer")
+            mask = ~np.isnan(ref)
+            ax.fill_between(idx[mask], ref[mask] - sigma[mask], ref[mask] + sigma[mask], color='pink', alpha=0.5)
+
+            # ax.fill_between(idx, ref - 0.1, ref + 0.1, color='black', alpha=0.15)
+            # ax.set_title(f"Cumulative force vs monomer index\n{subtitle}", fontsize=16)
+            ax.set_xlabel("Monomer index", fontsize=15); ax.set_ylabel("Tensile force [pN]", fontsize=15)
+            #ax.set_xticks(idx)
+            ax.set_xticks(np.arange(0, N_detect+1, 5))
+            ax.set_xlim(0,31)
+            ax.grid(True); ax.legend(frameon=False, fontsize=10)
             plt.tight_layout()
             out2 = os.path.join(base_dir, "force_cumulative_vs_monomer_test.png")
             plt.savefig(out2, dpi=300, bbox_inches='tight'); plt.close(fig); print(f"Saved {out2}")
@@ -477,13 +536,14 @@ def plot_tethered_across_LJ_for_gamma(
     def fmt_kT(val):
         r = round(val)
         if abs(val - r) < 1e-9:
-            return f"{int(r)}KT"
+            return f"{int(r)} kT"
         s = f"{val:.2f}".rstrip('0').rstrip('.')
-        return f"{s}KT"
+        return f"{s} kT"
 
     # ---------- styling / constants ----------
     plt.style.use("seaborn-v0_8-whitegrid")
-    colors = plt.get_cmap("tab10").colors
+    colors = plt.get_cmap("tab20").colors
+    
     a = config["physical"]["a"]
     dyn_visc_SI = config["physical"]["VISC_dyn"] / 10.0   # -> dyn·s/cm²
 
@@ -511,7 +571,7 @@ def plot_tethered_across_LJ_for_gamma(
         return int(m.group(1)) if m else d
     lj_dirs.sort(key=_lj_key)
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(6, 4))
     any_curve = False
     error_rows = []
 
@@ -662,12 +722,12 @@ def plot_tethered_across_LJ_for_gamma(
 
     # overlay expected tethered curve
     if include_expected:
-        ax.plot(exp_x, exp_y, 'k--', linewidth=2, marker='s', markersize=5, label="Expected (tethered)")
+        ax.plot(exp_x, exp_y, 'k--', linewidth=2, marker='s', markersize=5, label="Fu et al. (tethered)")
         ax.fill_between(exp_x, exp_y - exp_s, exp_y + exp_s, color='black', alpha=0.12, linewidth=0)
 
-    ax.set_title(f"Tethered: Extension vs Shear Stress at γ={gamma_val:.4f}", fontsize=16)
-    ax.set_xlabel("Wall shear stress [dyn/cm²]")
-    ax.set_ylabel("Normalized extension $(E - E_0)/(L_{\\max}-E_0)$")
+    # ax.set_title(f"Tethered: Extension vs Shear Stress at γ={gamma_val:.4f}", fontsize=16)
+    ax.set_xlabel("Wall shear stress [dyn/cm²]", fontsize=15)
+    ax.set_ylabel(r"$\hat{E}^{final}_{tethered}$", fontsize=15)
     ax.legend(fontsize=9, frameon=False)
     ax.grid(True)
     plt.tight_layout()
@@ -679,13 +739,3 @@ def plot_tethered_across_LJ_for_gamma(
     plt.close(fig)
     print(f"Saved {out_png}")
 
-    # write errors CSV
-    if save_errors and error_rows:
-        if errors_name is None:
-            errors_name = outname.replace(".png", "_errors.csv")
-        out_csv = os.path.join(base_dir, errors_name)
-        with open(out_csv, "w", newline="") as fh:
-            w = csv.writer(fh)
-            w.writerow(["level","lj_label","identifier","n_points","sse","mse","rmse","chi2","chi2_per_point"])
-            w.writerows(error_rows)
-        print(f"Saved {out_csv}")
