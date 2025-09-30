@@ -9,4 +9,5 @@ validation_data/
 *.avi
 *.png
 *.log
+*.csv
 validation/

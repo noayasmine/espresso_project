@@ -108,7 +108,8 @@ def run_simulation(params,run_type):
     BOX_Lx, BOX_Ly, BOX_Lz = geom["BOX_Lx"], geom["BOX_Ly"], geom["BOX_Lz"]
     AGRID = geom["AGRID"]
 
-    TIME_STEP, LOOPS, STEPS = sim["TIME_STEP"], sim["LOOPS"], sim["STEPS"]
+    TIME_STEP, LB_TIME_STEP, LOOPS, STEPS = sim["TIME_STEP"], sim["LB_TIME_STEP"], sim["LOOPS"], sim["STEPS"]
+
     N_POLYMERS = sim["N_POLYMERS"]
     POSITIONS = sim["POSITIONS"]
     START_POSITIONS = sim["START_POSITIONS"]
@@ -140,16 +141,14 @@ def run_simulation(params,run_type):
     if save_VTK:
         os.makedirs(outdir, exist_ok=True)
 
-    MA = (np.sqrt(3) * VELOCITY * TIME_STEP * 5) / AGRID
+    MA = (np.sqrt(3) * VELOCITY * LB_TIME_STEP) / AGRID
     logging.info(f"Running simulation: shear={int(SHEAR*1e4)}, n_polymers={N_POLYMERS}, n_monomers={N_MONOMERS}, "\
-    f"gridsize={AGRID}, MD_timestep={TIME_STEP}, LB_timestep={TIME_STEP*5}, viscosity={VISC}, seed={SEED}, velocity={VELOCITY}, "\
+    f"gridsize={AGRID}, MD_timestep={TIME_STEP}, LB_timestep={LB_TIME_STEP}, viscosity={VISC}, seed={SEED}, velocity={VELOCITY}, "\
     f"Ma={MA}")
-
 
     vals = lb_units_and_gammas(agrid=AGRID, tau=TIME_STEP*5, nu_md=VISC)
     for val, v in vals.items():
         logging.info(f"{val}: {v}")
-
 
     system = espressomd.System(box_l=[BOX_Lx, BOX_Ly, BOX_Lz], periodicity=[True, True, False])
     
@@ -236,7 +235,7 @@ def run_simulation(params,run_type):
     # LB Fluid setup
     # lbf = espressomd.lb.LBFluid(kT=0, seed=42, agrid=AGRID, dens=DENS, visc=VISC, tau=TIME_STEP)
 
-    lbf = espressomd.lb.LBFluid(kT=0, seed=42, agrid=AGRID, dens=DENS, visc=VISC, tau=TIME_STEP*5)
+    lbf = espressomd.lb.LBFluid(kT=0, seed=42, agrid=AGRID, dens=DENS, visc=VISC, tau=LB_TIME_STEP)
     system.actors.add(lbf)
     system.thermostat.set_lb(LB_fluid=lbf, gamma=GAMMA, seed=42)
 

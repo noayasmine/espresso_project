@@ -84,7 +84,6 @@ def plot_validation_results(config, base_dir, validation_type="free",
     """
     plt.style.use("seaborn-v0_8-whitegrid")
 
-
     color_cycle = plt.get_cmap("tab20").colors
 
     a = config["physical"]["a"]
@@ -133,7 +132,7 @@ def plot_validation_results(config, base_dir, validation_type="free",
         else:
             print(f"[INFO] target_gamma={target_gamma} not found; plotting all gammas.")
 
-    fig, ax = plt.subplots(figsize=(8,4))
+    fig, ax = plt.subplots(figsize=(6,4))
     for gi, gname in enumerate(gamma_dirs):
         gamma_val = int(gamma_pattern.match(gname).group(1)) / 1e4
         gpath = os.path.join(base_dir, gname)
@@ -234,11 +233,10 @@ def plot_validation_results(config, base_dir, validation_type="free",
     else:
         ax.set_xlabel("Wall shear stress [dyn/cm²]",fontsize=15)
         ax.set_ylabel(r"$\hat{E}^{final}_{tethered}$", fontsize=15)
-    ax.legend(fontsize=10, frameon=False); ax.grid(True); plt.tight_layout()
+    ax.legend(fontsize=10, frameon=False); ax.grid(False); plt.tight_layout()
     out = os.path.join(base_dir, "extension_vs_shearstress_test.png")
     plt.savefig(out, dpi=300, bbox_inches='tight'); plt.close(fig)
     print(f"Plot saved to {out}")
-
 
 
 # ---------- Time series (dynamic N + optional Box_Lx override + free_metric) ----------
@@ -283,7 +281,7 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
 
     # ----- Recoiling (tethered metric, normalized to t=0; no PBC) -----
     if plot_type == "extension" and str(validation_type).lower() == "recoiling":
-        fig, ax = plt.subplots(figsize=(12,6))
+        fig, ax = plt.subplots(figsize=(6,4))
         gamma_dirs = [d for d in os.listdir(base_dir)
                       if d.startswith("gamma_") and os.path.isdir(os.path.join(base_dir, d))]
         gamma_dirs.sort(key=lambda g: int(re.match(r"gamma_(\d+)", g).group(1)) if re.match(r"gamma_(\d+)", g) else 0)
@@ -315,7 +313,7 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
 
         ax.set_title("Polymer Extension Over Time (tethered metric, normalized to t=0)", fontsize=16)
         ax.set_xlabel("Time [s]"); ax.set_ylabel("Extension / initial extension")
-        ax.legend(fontsize='small'); ax.grid(True); plt.tight_layout()
+        ax.legend(fontsize='small'); ax.grid(False); plt.tight_layout()
         out = os.path.join(base_dir, "recoiling_extension_over_time.png")
         plt.savefig(out, dpi=300, bbox_inches='tight'); plt.close(fig)
         print(f"Saved {out}")
@@ -370,7 +368,7 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
         ax.set_xlabel("Time [s]", fontsize=15); ax.set_ylabel(r"$\hat{E}_{teth}$", fontsize=15)
         
         if ax.has_data(): ax.legend(frameon=False, fontsize=10, ncol=2)
-        ax.grid(True); plt.tight_layout()
+        ax.grid(False); plt.tight_layout()
         out = os.path.join(base_dir, "extension_time_test.png")
         plt.savefig(out, dpi=300, bbox_inches='tight'); plt.close(fig); print(f"Saved {out}")
         return
@@ -408,7 +406,7 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
                 print(f"Requested monomer_index={monomer_index} is out of range [0, {N_detect-1}]")
                 return
 
-            fig, ax = plt.subplots(figsize=(6, 3))
+            fig, ax = plt.subplots(figsize=(6, 4))
             for i, sd in enumerate(shear_dirs_force):
                 f = os.path.join(base_dir, sd, "drag_forces.npz")
                 if not os.path.isfile(f):
@@ -437,7 +435,7 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
             ax.set_ylabel(f"Drag force [pN]", fontsize=15)
             # ax.set_title(f"Force vs time (monomer {monomer_index})\n{subtitle}", fontsize=14)
             # if ax.has_data(): ax.legend(frameon=False, fontsize=10, ncol=2)
-            ax.grid(True); plt.tight_layout()
+            ax.grid(False); plt.tight_layout()
             out = os.path.join(base_dir, f"force_monomer_{monomer_index}_vs_time.png")
             plt.savefig(out, dpi=300, bbox_inches='tight'); plt.close(fig)
             print(f"Saved {out}")
@@ -467,7 +465,7 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
                 for m in range(N_use):
                     if nL>0:
                         axs[m].plot(t[-nL:], Fm[:,m][-nL:], lw=1.2, color="purple", label=f"{sd.split('_')[1]} 1/s")
-                    axs[m].set_ylabel(f"M{m} [pN]", fontsize=9); axs[m].grid(True)
+                    axs[m].set_ylabel(f"M{m} [pN]", fontsize=9); axs[m].grid(False)
                 if nL>0: lastN[sd] = Fm[-nL:,:]
             except Exception as e:
                 print(f"Skip {f}: {e}")
@@ -514,7 +512,7 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
             #ax.set_xticks(idx)
             ax.set_xticks(np.arange(0, N_detect+1, 5))
             ax.set_xlim(-1,30)
-            ax.grid(True); ax.legend(frameon=False, fontsize=10)
+            ax.grid(False); ax.legend(frameon=False, fontsize=10)
             plt.tight_layout()
             out2 = os.path.join(base_dir, "force_cumulative_vs_monomer_test.png")
             plt.savefig(out2, dpi=300, bbox_inches='tight'); plt.close(fig); print(f"Saved {out2}")
@@ -552,7 +550,7 @@ def plot_tethered_across_LJ_for_gamma(
 
     # ---------- styling / constants ----------
     plt.style.use("seaborn-v0_8-whitegrid")
-    colors = plt.get_cmap("tab20").colors
+    colors = plt.get_cmap("Dark2").colors
     
     a = config["physical"]["a"]
     dyn_visc_SI = config["physical"]["VISC_dyn"] / 10.0   # -> dyn·s/cm²
@@ -684,14 +682,14 @@ def plot_tethered_across_LJ_for_gamma(
                 mse_scaled = sse_scaled / npt
                 rmse_scaled = float(np.sqrt(mse_scaled))
 
-                legend_label = fr"{lj_label_base} (MSE$_{{\mathrm{{comb}}}}$={mse_scaled:.3f})"
+                legend_label = fr"{lj_label_base} ($\chi^2_{14}$={mse_scaled:.3f})"
                 if save_errors:
                     error_rows.append(["mean", lj_label_base, lj_label_base, npt,
                                        sse_scaled, mse_scaled, rmse_scaled, float('nan'), float('nan')])
 
             # ---- use errorbar instead of fill ----
             ax.errorbar(xs, y_mean_norm, yerr=y_std_norm,
-                        fmt='o--', lw=1.6, markersize=4, color=c, capsize=3, label=legend_label)
+                        fmt='o-', lw=1.6, markersize=4, color=c, capsize=3, label=legend_label)
 
         else:
             for rj, dct in sorted(run_curves.items()):
@@ -723,13 +721,13 @@ def plot_tethered_across_LJ_for_gamma(
     # expected tethered curve (keep shaded band)
     if include_expected:
         ax.plot(exp_x, exp_y, '--', color='grey', linewidth=1,
-        marker='s', markersize=3, label="Fu et al. (tethered)")
+        label="Fu et al. (tethered)")
         ax.fill_between(exp_x, exp_y - exp_s, exp_y + exp_s, color='grey', alpha=0.2, linewidth=0)
     ax.set_ylim(0,1.2)
-    ax.set_xlabel("Wall shear stress [dyn/cm²]", fontsize=15)
+    ax.set_xlabel(r"Wall shear stress [dyn cm$^{-2}$]", fontsize=15)
     ax.set_ylabel(r"$\hat{E}^{final}_{tethered}$", fontsize=15)
     ax.legend(fontsize=9, frameon=False, ncols=1 if aggregate_runs else 2)
-    ax.grid(True)
+    ax.grid(False)
     plt.tight_layout()
 
     if outname is None:
@@ -763,7 +761,7 @@ def plot_cumulative_force_across_gammas(
 ):
     """
     Plot cumulative tensile force vs monomer index for all gamma_* in lj_dir at a given shear,
-    and compute a normalized MSE = mean((diff/sigma_ref)^2), i.e. squared error divided
+    and compute a reduced chi2 = mean((diff/sigma_ref)^2), i.e. squared error divided
     by the squared reference uncertainty.
     """
     import os, re
@@ -836,7 +834,7 @@ def plot_cumulative_force_across_gammas(
         print("No usable force data found for this LJ folder and shear.")
         return {}
 
-    fig, ax = plt.subplots(figsize=(7, 4.5))
+    fig, ax = plt.subplots(figsize=(6, 4))
     idx = np.arange(0, N_detect)
     start = min(start_from_right, N_detect)
 
@@ -867,7 +865,7 @@ def plot_cumulative_force_across_gammas(
             idx, y, yerr=e,
             marker='o', lw=1.2, elinewidth=1, capsize=3, markersize=3,
             color=color_cycle[i % len(color_cycle)],
-            label=fr"$\gamma$={gval:.4f}" + r" ($MSE^{*}$="+ f"{round(norm_mse,2)})"
+            label=fr"$\gamma$={gval:.4f}" + r" ($\chi^{2}_{20}$="+ f"{round(norm_mse,2)})"
         )
 
     # Reference + band
@@ -879,7 +877,7 @@ def plot_cumulative_force_across_gammas(
     ax.set_ylabel("Tensile force [pN]", fontsize=15)
     ax.set_xticks(np.arange(0, N_detect+1, 5))
     ax.set_xlim(-1, max(30, N_detect))
-    ax.grid(True)
+    ax.grid(False)
     ax.legend(frameon=False, fontsize=12, ncol=1)
     title_top = f"Cumulative force vs monomer index (shear={target_shear})"
     if lj_text:
@@ -894,7 +892,118 @@ def plot_cumulative_force_across_gammas(
 
     print("== Normalized MSE per gamma ==")
     for gval in sorted(mse_by_gamma):
-        print(f"  gamma={gval:.4f}: MSE = {mse_by_gamma[gval]:.6g}")
+        print(f"  gamma={gval:.4f}: " + r"$\chi^2_{14}$" + f" = {mse_by_gamma[gval]:.6g}")
 
     return mse_by_gamma
 
+def plot_recoiling_across_LJ_for_gamma(
+    config,
+    root_dir,
+    gamma_value,              # float like 0.0055 or string like "gamma_00055"
+    time_step=None,
+    add_expected=True         # overlay your expected reference if desired
+):
+    """
+    Plot recoiling dynamics (tethered metric, normalized to t=0) for ONE gamma across ALL LJ_* folders.
+
+    root_dir   : directory that contains LJ_* subfolders (e.g. ".../validation_coil_100K/")
+    gamma_value: float (e.g. 0.0055) or folder string "gamma_00055"
+    """
+    import os, re
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    plt.style.use("seaborn-v0_8-whitegrid")
+
+    # --- helpers ---
+    def _gamma_folder_from_value(gv):
+        if isinstance(gv, str):
+            m = re.match(r"gamma_(\d{5})$", gv)
+            if m:
+                return gv, int(m.group(1)) / 1e4
+            # try parse float string
+            try:
+                gv_float = float(gv)
+            except Exception:
+                raise ValueError(f"Unrecognized gamma_value='{gv}'")
+        else:
+            gv_float = float(gv)
+        code = f"{int(round(gv_float * 1e4)):05d}"
+        return f"gamma_{code}", gv_float
+
+    # Time step (seconds per saved frame)
+    TIMESTEP = config["simulation"]["TIME_STEP"]
+    STEPS    = config["simulation"]["STEPS"]
+    if time_step is not None:
+        TIMESTEP = time_step
+    dt = 1e-4 * TIMESTEP * STEPS
+
+    # color cycle
+    color_cycle = plt.get_cmap("tab20").colors
+
+    # resolve gamma folder name + numeric value
+    gamma_folder, gamma_val = _gamma_folder_from_value(gamma_value)
+
+    # collect LJ_* folders
+    lj_dirs = [d for d in os.listdir(root_dir) if os.path.isdir(os.path.join(root_dir, d)) and re.match(r"LJ_\d{5}$", d)]
+    lj_dirs.sort(key=lambda d: int(re.search(r"LJ_(\d{5})", d).group(1)))
+
+    # plotting
+    fig, ax = plt.subplots(figsize=(6, 4))
+    nplotted = 0
+
+    for i, lj in enumerate(lj_dirs):
+        lj_path = os.path.join(root_dir, lj)
+        # inside each LJ folder we expect gamma_<code>/positions.npz
+        gamma_path = os.path.join(lj_path, gamma_folder)
+        fpos = os.path.join(gamma_path, "positions.npz")
+        if not os.path.isfile(fpos):
+            print(f"[skip] Missing positions: {fpos}")
+            continue
+        try:
+            pos = np.load(fpos)["positions"]   # (T, N, D)
+            # tethered metric (no PBC), normalize to t=0
+            E = tethered_max_extension_ts(pos, anchor=0)
+            if len(E) == 0 or E[0] <= 0:
+                print(f"[skip] Bad initial extension in {fpos}")
+                continue
+            y = E / E[0]
+            t = np.arange(len(y)) * dt
+
+            # LJ label: LJ_00300 -> 3.00 × 4kT
+            mlj = re.search(r"LJ_(\d{5})", lj)
+            lj_text = f"{4 * int(mlj.group(1))/1e2:.2f} kT" if mlj else lj
+
+            ax.plot(t, y, lw=1.5, color=color_cycle[nplotted % 20], label=f"LJ = {lj_text}")
+            nplotted += 1
+        except Exception as e:
+            print(f"[skip] Error reading {fpos}: {e}")
+
+    if nplotted == 0:
+        print("No recoiling data found for the requested gamma across LJ folders.")
+        plt.close(fig)
+        return
+
+    # optional expected reference
+    if add_expected:
+        expected_x = np.array([0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8])
+        expected_y = np.array([1, 0.4, 0.2, 0.15, 0.12, 0.12, 0.12, 0.12, 0.12])
+        expected_err = np.array([0.12, 0.12, 0.12, 0.12, 0.12, 0.12, 0.12, 0.12, 0.12])
+        # ax.plot(expected_x, expected_y, 'k--', linewidth=2, label="Expected")
+        ax.plot(expected_x, expected_y, '--', lw=1.2, color='pink', label=r"Fu et al.")
+        ax.fill_between(expected_x, expected_y - expected_err, expected_y + expected_err, alpha=0.5, color="pink")
+
+    ax.set_xlabel("Time [s]")
+    ax.set_ylabel("Extension / initial extension")
+    title = (r"Recoiling dynamics, normalized $E(t)/E(0)$" +
+             f"\n" + r"$\gamma$" + f" = {gamma_val:.4f}")
+    ax.set_title(title, fontsize=12)
+    ax.legend(fontsize=9, frameon=False, ncol=2)
+    ax.grid(False)
+    ax.set_ylim(0,1)
+    plt.tight_layout()
+
+    out = os.path.join(root_dir, f"recoiling_all_LJ_gamma_{gamma_folder.split('_')[1]}.png")
+    plt.savefig(out, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    print(f"Saved {out}")

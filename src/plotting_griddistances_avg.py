@@ -133,7 +133,8 @@ def plot_grid_results_avg(config, base_dir, plot_mode="mean_std"):
         ax.set_title(f"{shearrate_str} = {shear_value}" + r" [$s^{-1}$]", fontsize=17)
         ax.set_ylabel(r"$\langle d \rangle $ [$\mu$m]", fontsize=20)
         ax.tick_params(axis='both', labelsize=18)
-        ax.grid(True)
+        ax.grid(False)
+        ax.set_xlim(0,0.1)
         if shear_value==1000:
             ax.legend(fontsize=15, frameon=False)
 

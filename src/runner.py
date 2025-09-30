@@ -178,6 +178,8 @@ if __name__ == "__main__":
         config["physical"]["GAMMA"] = gamma
         config["simulation"]["N_POLYMERS"] = 1
         config["geometry"]["AGRID"] = 1
+        # change number of monomers in the polymer
+        config["physical"]["N_MONOMERS"] = 60
         # for uncoiling for uncoiling_100K
         # config["physical"]["k"] = 6.5
         # for uncoiling_10000K
@@ -210,6 +212,7 @@ if __name__ == "__main__":
         # need to decrease timestep due to large boxsize 
         # (i.e. large Ma number for LB for high shear rates)
         config["simulation"]["TIME_STEP"] = 0.00025
+        config["simulation"]["LB_TIME_STEP"] = 0.00025
         config["simulation"]["TETHERED"] = False
         config["simulation"]["TOTAL_TIME"] = 0.4
         # extra minimization steps needed for the large polymer
@@ -231,21 +234,25 @@ if __name__ == "__main__":
     if run_type == "validation_coiling":
         gamma = float(sys.argv[2])
         LJ_strength = float(sys.argv[3])
-        gridsize = float(sys.argv[4])
+        run = int(sys.argv[4])
         save_dir = str(sys.argv[5])
-
+        
+        # set run id as random seed
+        config["simulation"]["SEED"] = run
         # for recoiling, the experimental data added 60% sucrose, increased viscosity and density
         config["fluid"]["VISC"] = config["fluid"]["VISC"] * 58
         config["fluid"]["DENS"] = 0.00013
         config["physical"]["GAMMA"] = gamma
-        config["geometry"]["AGRID"] = gridsize
+        config["geometry"]["AGRID"] = 1
         config["simulation"]["N_POLYMERS"] = 1
-        config["simulation"]["TOTAL_TIME"] = 0.7
+        config["simulation"]["TOTAL_TIME"] = 0.8
+        config["physical"]["k"] = 650
+        config["physical"]["N_MONOMERS"] = 60
 
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
         
-        config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/"
+        config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/run_{run}/"
         add_polymer_positions(config, run_type)
     
     if run_type == "test_initial_setup":

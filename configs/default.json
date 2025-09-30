@@ -11,6 +11,7 @@
   },
   "simulation": {
     "TIME_STEP": 0.001,
+    "LB_TIME_STEP": 0.005,
     "LOOPS": 8000,
     "STEPS": 1000,
     "TOTAL_TIME":0.4,
