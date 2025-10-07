@@ -1,5 +1,6 @@
 import os, re
 import numpy as np
+import csv
 import matplotlib.pyplot as plt
 
 # ---------- PBC helpers ----------
@@ -84,7 +85,8 @@ def plot_validation_results(config, base_dir, validation_type="free",
     """
     plt.style.use("seaborn-v0_8-whitegrid")
 
-    color_cycle = plt.get_cmap("tab20").colors
+    # color_cycle = plt.get_cmap("tab20").colors
+    color_cycle = plt.get_cmap("Dark2").colors
 
     a = config["physical"]["a"]
     dyn_visc_SI = config["physical"]["VISC_dyn"] / 10
@@ -254,7 +256,7 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
     Box_Lx: optional override for x-box length in PBC handling (free case).
     """
     plt.style.use("seaborn-v0_8-whitegrid")
-    color_cycle = plt.get_cmap("tab20").colors
+    color_cycle = plt.get_cmap("Dark2").colors
 
     a = config["physical"]["a"]
     TIMESTEP = config["simulation"]["TIME_STEP"]; STEPS = config["simulation"]["STEPS"]
@@ -321,6 +323,7 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
 
     # ----- Extension (plot all shears; dynamic N per shear) -----
     if plot_type == "extension":
+        color_cycle = plt.get_cmap("tab20").colors
         fig, ax = plt.subplots(figsize=(6,4))
         for i, sd in enumerate(shear_dirs_all):
             f = os.path.join(base_dir, sd, "positions.npz")
@@ -364,12 +367,12 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
             except Exception as e:
                 print(f"Skip {f}: {e}")
         # ax.set_title(f"Extension over time\n{subtitle}", fontsize=16)
-        ax.set_title(r"$k_{FENE}$=" + f"{k_fene}" + "mN/m", fontsize=16)
+        # ax.set_title(r"$k_{FENE}$=" + f"{k_fene}" + "mN/m", fontsize=16)
         ax.set_xlabel("Time [s]", fontsize=15); ax.set_ylabel(r"$\hat{E}_{teth}$", fontsize=15)
         
         if ax.has_data(): ax.legend(frameon=False, fontsize=10, ncol=2)
         ax.grid(False); plt.tight_layout()
-        out = os.path.join(base_dir, "extension_time_test.png")
+        out = os.path.join(base_dir, "extension_time.png")
         plt.savefig(out, dpi=300, bbox_inches='tight'); plt.close(fig); print(f"Saved {out}")
         return
 
@@ -421,11 +424,11 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
                     t = np.arange(len(Fm)) * dt
 
                     nL = int(len(Fm)/4) if len(Fm) > 0 else 0          # last quarter (your comment)
-                    # nL = int(len(Fm))                                    # currently full length
+                    #nL = int(len(Fm))                                    # currently full length
                     if nL > 0:
                         ax.plot(t[-nL:], Fm[-nL:], lw=1.5,
                                 # color=color_cycle[i % 20],
-                                color="purple",
+                                color="grey",
                                 label=f"Monomer index={monomer_index}")
                                 
                 except Exception as e:
@@ -435,6 +438,8 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
             ax.set_ylabel(f"Drag force [pN]", fontsize=15)
             # ax.set_title(f"Force vs time (monomer {monomer_index})\n{subtitle}", fontsize=14)
             # if ax.has_data(): ax.legend(frameon=False, fontsize=10, ncol=2)
+            # ax.set_xlim(0,0.4)
+            ax.set_xlim(0.3,0.4)
             ax.grid(False); plt.tight_layout()
             out = os.path.join(base_dir, f"force_monomer_{monomer_index}_vs_time.png")
             plt.savefig(out, dpi=300, bbox_inches='tight'); plt.close(fig)
@@ -461,10 +466,10 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
                 nL = int(len(Fm)/4) if len(Fm)>0 else 0
                 # nL = int(len(Fm))
                 print(nL)
-                c = color_cycle[i % 20]
+                c = color_cycle[i % 8]
                 for m in range(N_use):
                     if nL>0:
-                        axs[m].plot(t[-nL:], Fm[:,m][-nL:], lw=1.2, color="purple", label=f"{sd.split('_')[1]} 1/s")
+                        axs[m].plot(t[-nL:], Fm[:,m][-nL:], lw=1.2, color="grey", label=f"{sd.split('_')[1]} 1/s")
                     axs[m].set_ylabel(f"M{m} [pN]", fontsize=9); axs[m].grid(False)
                 if nL>0: lastN[sd] = Fm[-nL:,:]
             except Exception as e:
@@ -474,14 +479,14 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
             if ax.has_data(): ax.legend(fontsize=8, frameon=False)
         axs[-1].set_xlabel("Time [s]"); plt.suptitle(f"Force per monomer over time\n{subtitle}", fontsize=16)
         plt.tight_layout(rect=[0,0,1,0.97])
-        out = os.path.join(base_dir, "force_per_monomer_test.png")
+        out = os.path.join(base_dir, "force_per_monomer.png")
         plt.savefig(out, dpi=300, bbox_inches='tight'); plt.close(fig); print(f"Saved {out}")
 
         if lastN:
             fig, ax = plt.subplots(figsize=(6,4))
             idx = np.arange(0, N_detect); start = min(30, N_detect)
             for i, (sd, block) in enumerate(sorted(lastN.items(), key=lambda x: int(x[0].split('_')[1]))):
-                c = color_cycle[i % 20]
+                c = color_cycle[i % 8]
                 sub = block[:, :start][:, ::-1]
                 cum = np.cumsum(sub, axis=1)[:, ::-1]
                 mu, sig = cum.mean(0), cum.std(0)
@@ -502,9 +507,9 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
             sigma[:start] = 0.1 * steps_from_right
 
 
-            ax.plot(idx, ref, '--', lw=1.2, color="pink", label=r"Fu et al. $0.5 \pm 0.1$ pN/monomer")
+            ax.plot(idx, ref, '--', lw=1.2, color="grey", label=r"Fu et al. $0.5 \pm 0.1$ pN/monomer")
             mask = ~np.isnan(ref)
-            ax.fill_between(idx[mask], ref[mask] - sigma[mask], ref[mask] + sigma[mask], color='pink', alpha=0.5)
+            ax.fill_between(idx[mask], ref[mask] - sigma[mask], ref[mask] + sigma[mask], color='grey', alpha=0.15)
 
             # ax.fill_between(idx, ref - 0.1, ref + 0.1, color='black', alpha=0.15)
             # ax.set_title(f"Cumulative force vs monomer index\n{subtitle}", fontsize=16)
@@ -512,13 +517,14 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
             #ax.set_xticks(idx)
             ax.set_xticks(np.arange(0, N_detect+1, 5))
             ax.set_xlim(-1,30)
-            ax.grid(False); ax.legend(frameon=False, fontsize=10)
+            ax.grid(False); ax.legend(frameon=False, fontsize=9)
             plt.tight_layout()
-            out2 = os.path.join(base_dir, "force_cumulative_vs_monomer_test.png")
+            out2 = os.path.join(base_dir, "force_cumulative_vs_monomer.png")
             plt.savefig(out2, dpi=300, bbox_inches='tight'); plt.close(fig); print(f"Saved {out2}")
         return
 
     print(f"Unsupported plot_type: {plot_type}")
+
 
 def plot_tethered_across_LJ_for_gamma(
     config,
@@ -529,11 +535,10 @@ def plot_tethered_across_LJ_for_gamma(
     outname=None,
     save_errors=True,
     errors_name=None,
-    aggregate_runs=True           # if True, use mean±std across run_* per shear; if False, plot each run
+    aggregate_runs=True,
+    skip = {},         # if True, use mean±std across run_* per shear; if False, plot each run
+    N_mono=30
 ):
-    import os, re, csv
-    import numpy as np
-    import matplotlib.pyplot as plt
 
     # ---------- helpers ----------
     def tethered_max_extension_last_frame(positions, anchor_idx=0):
@@ -558,8 +563,10 @@ def plot_tethered_across_LJ_for_gamma(
     # expected tethered curve
     exp_x = np.array([0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1280], float)
     exp_y = np.array([0.00, 0.35, 0.55, 0.63, 0.70, 0.75, 0.81, 0.85, 0.90, 0.92, 0.94, 0.96, 0.96, 0.96], float)
-    exp_s = np.array([0.1, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2], float)
-
+    if N_mono==30:
+        exp_s = np.array([0.1, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2], float)
+    if N_mono==60:
+        exp_s = np.array([0.07, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15], float)
     # parse/format gamma
     gpat = re.compile(r"gamma_(\d{5})")
     if isinstance(target_gamma, str) and gpat.match(target_gamma):
@@ -578,6 +585,8 @@ def plot_tethered_across_LJ_for_gamma(
         m = lj_pat.match(d)
         return int(m.group(1)) if m else d
     lj_dirs.sort(key=_lj_key)
+
+    lj_dirs = [d for d in lj_dirs if d not in skip]
 
     fig, ax = plt.subplots(figsize=(6, 4))
     any_curve = False
@@ -682,7 +691,7 @@ def plot_tethered_across_LJ_for_gamma(
                 mse_scaled = sse_scaled / npt
                 rmse_scaled = float(np.sqrt(mse_scaled))
 
-                legend_label = fr"{lj_label_base} ($\chi^2_{14}$={mse_scaled:.3f})"
+                legend_label = f"{lj_label_base} " + r"($\chi^{2}_{14}$="+f"{mse_scaled:.3f})"
                 if save_errors:
                     error_rows.append(["mean", lj_label_base, lj_label_base, npt,
                                        sse_scaled, mse_scaled, rmse_scaled, float('nan'), float('nan')])
@@ -750,7 +759,6 @@ def plot_tethered_across_LJ_for_gamma(
                 w.writerow(row)
         print(f"Saved {csv_path}")
 
-
 def plot_cumulative_force_across_gammas(
     config,
     lj_dir,
@@ -764,13 +772,10 @@ def plot_cumulative_force_across_gammas(
     and compute a reduced chi2 = mean((diff/sigma_ref)^2), i.e. squared error divided
     by the squared reference uncertainty.
     """
-    import os, re
-    import numpy as np
-    import matplotlib.pyplot as plt
 
     plt.style.use("seaborn-v0_8-whitegrid")
     #color_cycle = plt.get_cmap("tab20").colors
-    color_cycle = plt.get_cmap("tab20b").colors
+    # color_cycle = plt.get_cmap("tab20b").colors
     color_cycle = plt.get_cmap("Dark2").colors
 
     TIMESTEP = config["simulation"]["TIME_STEP"]
@@ -865,20 +870,20 @@ def plot_cumulative_force_across_gammas(
             idx, y, yerr=e,
             marker='o', lw=1.2, elinewidth=1, capsize=3, markersize=3,
             color=color_cycle[i % len(color_cycle)],
-            label=fr"$\gamma$={gval:.4f}" + r" ($\chi^{2}_{20}$="+ f"{round(norm_mse,2)})"
+            label=fr"$\gamma$={gval:.4f}" + r" ($\chi^{2}_{14}$="+ f"{round(norm_mse,2)})"
         )
 
     # Reference + band
     mask = ~np.isnan(ref)
-    ax.plot(idx, ref, '--', lw=1.2, color='pink', label=r"Fu et al. $0.5 \pm 0.1$ pN/mono")
-    ax.fill_between(idx[mask], ref[mask] - sigma_ref[mask], ref[mask] + sigma_ref[mask], alpha=0.5, color="pink")
+    ax.plot(idx, ref, '--', lw=1.2, color='grey', label=r"Fu et al. $0.5 \pm 0.1$ pN/mono")
+    ax.fill_between(idx[mask], ref[mask] - sigma_ref[mask], ref[mask] + sigma_ref[mask], alpha=0.25, color="grey")
 
     ax.set_xlabel("Monomer index", fontsize=15)
     ax.set_ylabel("Tensile force [pN]", fontsize=15)
     ax.set_xticks(np.arange(0, N_detect+1, 5))
     ax.set_xlim(-1, max(30, N_detect))
     ax.grid(False)
-    ax.legend(frameon=False, fontsize=12, ncol=1)
+    ax.legend(frameon=False, fontsize=9, ncol=1)
     title_top = f"Cumulative force vs monomer index (shear={target_shear})"
     if lj_text:
         title_top += f"\n{lj_text}"
@@ -892,36 +897,46 @@ def plot_cumulative_force_across_gammas(
 
     print("== Normalized MSE per gamma ==")
     for gval in sorted(mse_by_gamma):
-        print(f"  gamma={gval:.4f}: " + r"$\chi^2_{14}$" + f" = {mse_by_gamma[gval]:.6g}")
+        print(f"  gamma={gval:.4f}: " + r"$\chi^{2}_{14}$" + f" = {mse_by_gamma[gval]:.6g}")
 
     return mse_by_gamma
 
 def plot_recoiling_across_LJ_for_gamma(
     config,
     root_dir,
-    gamma_value,              # float like 0.0055 or string like "gamma_00055"
+    gamma_value,                 # float like 0.0055 or string like "gamma_00055"
     time_step=None,
-    add_expected=True         # overlay your expected reference if desired
+    add_expected=True,           # overlay your expected reference if desired
+    aggregate_runs=True,         # if True: mean±std across run_*; if False: plot each run
+    show_individual_when_agg=False,  # if True, also show faint individual runs behind the mean
+    runs_glob="run_*",           # pattern to discover run folders
+    N_mono=30
 ):
     """
     Plot recoiling dynamics (tethered metric, normalized to t=0) for ONE gamma across ALL LJ_* folders.
 
-    root_dir   : directory that contains LJ_* subfolders (e.g. ".../validation_coil_100K/")
-    gamma_value: float (e.g. 0.0055) or folder string "gamma_00055"
+    Works with:
+      - gamma folder containing positions.npz directly
+      - gamma folder containing multiple run_* subfolders with positions.npz inside
     """
-    import os, re
+    import os, re, glob
     import numpy as np
     import matplotlib.pyplot as plt
 
     plt.style.use("seaborn-v0_8-whitegrid")
 
     # --- helpers ---
+    def tethered_max_extension_ts(positions, anchor=0):
+        """Max distance from anchor to any bead per frame."""
+        p0 = positions[:, anchor, :]                  # (T, D)
+        d  = np.linalg.norm(positions - p0[:, None, :], axis=2)  # (T, N)
+        return d.max(axis=1)                          # (T,)
+
     def _gamma_folder_from_value(gv):
         if isinstance(gv, str):
             m = re.match(r"gamma_(\d{5})$", gv)
             if m:
                 return gv, int(m.group(1)) / 1e4
-            # try parse float string
             try:
                 gv_float = float(gv)
             except Exception:
@@ -938,46 +953,86 @@ def plot_recoiling_across_LJ_for_gamma(
         TIMESTEP = time_step
     dt = 1e-4 * TIMESTEP * STEPS
 
-    # color cycle
-    color_cycle = plt.get_cmap("tab20").colors
+    # cmap = plt.get_cmap("tab20")
+    cmap = plt.get_cmap("Dark2")
+    color_cycle = list(cmap.colors)
 
-    # resolve gamma folder name + numeric value
     gamma_folder, gamma_val = _gamma_folder_from_value(gamma_value)
 
     # collect LJ_* folders
-    lj_dirs = [d for d in os.listdir(root_dir) if os.path.isdir(os.path.join(root_dir, d)) and re.match(r"LJ_\d{5}$", d)]
+    lj_dirs = [d for d in os.listdir(root_dir)
+               if os.path.isdir(os.path.join(root_dir, d)) and re.match(r"LJ_\d{5}$", d)]
     lj_dirs.sort(key=lambda d: int(re.search(r"LJ_(\d{5})", d).group(1)))
 
-    # plotting
     fig, ax = plt.subplots(figsize=(6, 4))
     nplotted = 0
 
     for i, lj in enumerate(lj_dirs):
         lj_path = os.path.join(root_dir, lj)
-        # inside each LJ folder we expect gamma_<code>/positions.npz
         gamma_path = os.path.join(lj_path, gamma_folder)
-        fpos = os.path.join(gamma_path, "positions.npz")
-        if not os.path.isfile(fpos):
-            print(f"[skip] Missing positions: {fpos}")
+
+        # Case A: single positions.npz directly in gamma folder
+        single_positions = os.path.join(gamma_path, "positions.npz")
+
+        # Case B: multiple runs inside gamma folder
+        run_positions = sorted(
+            glob.glob(os.path.join(gamma_path, runs_glob, "positions.npz"))
+        )
+
+        series_list = []  # list of y(t) arrays for this LJ
+
+        if os.path.isfile(single_positions):
+            try:
+                pos = np.load(single_positions)["positions"]     # (T,N,D)
+                E = tethered_max_extension_ts(pos, anchor=0)
+                if len(E) > 0 and E[0] > 0:
+                    series_list.append(E / E[0])
+                else:
+                    print(f"[skip] Bad initial extension in {single_positions}")
+            except Exception as e:
+                print(f"[skip] Error reading {single_positions}: {e}")
+
+        if run_positions:
+            for fpos in run_positions:
+                try:
+                    pos = np.load(fpos)["positions"]
+                    E = tethered_max_extension_ts(pos, anchor=0)
+                    if len(E) > 0 and E[0] > 0:
+                        series_list.append(E / E[0])
+                    else:
+                        print(f"[skip] Bad initial extension in {fpos}")
+                except Exception as e:
+                    print(f"[skip] Error reading {fpos}: {e}")
+
+        if not series_list:
+            print(f"[skip] No usable positions for {lj}/{gamma_folder}")
             continue
-        try:
-            pos = np.load(fpos)["positions"]   # (T, N, D)
-            # tethered metric (no PBC), normalize to t=0
-            E = tethered_max_extension_ts(pos, anchor=0)
-            if len(E) == 0 or E[0] <= 0:
-                print(f"[skip] Bad initial extension in {fpos}")
-                continue
-            y = E / E[0]
-            t = np.arange(len(y)) * dt
 
-            # LJ label: LJ_00300 -> 3.00 × 4kT
-            mlj = re.search(r"LJ_(\d{5})", lj)
-            lj_text = f"{4 * int(mlj.group(1))/1e2:.2f} kT" if mlj else lj
+        # time axis: use min length across runs to align
+        min_len = min(len(s) for s in series_list)
+        Y = np.stack([s[:min_len] for s in series_list], axis=0)   # (R,T)
+        t = np.arange(min_len) * dt
 
-            ax.plot(t, y, lw=1.5, color=color_cycle[nplotted % 20], label=f"LJ = {lj_text}")
-            nplotted += 1
-        except Exception as e:
-            print(f"[skip] Error reading {fpos}: {e}")
+        # Label: LJ_00300 -> 3.00 kT × 4
+        mlj = re.search(r"LJ_(\d{5})", lj)
+        lj_text = f"{int(4 * int(mlj.group(1))/1e2)} kT" if mlj else lj
+
+        color = color_cycle[nplotted % len(color_cycle)]
+
+        if aggregate_runs and Y.shape[0] > 1:
+            y_mean = Y.mean(axis=0)
+            y_std  = Y.std(axis=0, ddof=1) if Y.shape[0] > 1 else np.zeros_like(y_mean)
+            if show_individual_when_agg:
+                for r in range(Y.shape[0]):
+                    ax.plot(t, Y[r], lw=0.8, alpha=0.25, color=color)
+            ax.plot(t, y_mean, lw=1.8, color=color, label=f"{lj_text}")
+            ax.fill_between(t, y_mean - y_std, y_mean + y_std, alpha=0.2, color=color)
+        else:
+            for r in range(Y.shape[0]):
+                lbl = f"LJ = {lj_text} (run {r})" if Y.shape[0] > 1 else f"LJ = {lj_text}"
+                ax.plot(t, Y[r], lw=1.2, color=color, alpha=0.9 if Y.shape[0]==1 else 0.8, label=lbl)
+
+        nplotted += 1
 
     if nplotted == 0:
         print("No recoiling data found for the requested gamma across LJ folders.")
@@ -985,25 +1040,283 @@ def plot_recoiling_across_LJ_for_gamma(
         return
 
     # optional expected reference
-    if add_expected:
+    if add_expected and N_mono==30:
         expected_x = np.array([0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8])
-        expected_y = np.array([1, 0.4, 0.2, 0.15, 0.12, 0.12, 0.12, 0.12, 0.12])
-        expected_err = np.array([0.12, 0.12, 0.12, 0.12, 0.12, 0.12, 0.12, 0.12, 0.12])
-        # ax.plot(expected_x, expected_y, 'k--', linewidth=2, label="Expected")
-        ax.plot(expected_x, expected_y, '--', lw=1.2, color='pink', label=r"Fu et al.")
-        ax.fill_between(expected_x, expected_y - expected_err, expected_y + expected_err, alpha=0.5, color="pink")
+        expected_y = np.array([1, 0.4, 0.15, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
+        # expected_err = np.array([0.2]*len(expected_x))
+        expected_err = np.array([0.1, 0.3, 0.2, 0.2, 0.15, 0.15, 0.15, 0.15, 0.15])
+        ax.plot(expected_x, expected_y, '--', lw=1.2, color='grey', label=r"Fu et al.")
+        ax.fill_between(expected_x, expected_y - expected_err, expected_y + expected_err, alpha=0.25, color="grey")
 
-    ax.set_xlabel("Time [s]")
-    ax.set_ylabel("Extension / initial extension")
+    if add_expected and N_mono==60:
+        expected_x = np.array([0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8])
+        expected_y = np.array([1, 0.55, 0.25, 0.15, 0.1, 0.1, 0.1, 0.1, 0.1])
+        # expected_err = np.array([0.15]*len(expected_x))
+        expected_err = np.array([0.1, 0.15, 0.15, 0.15, 0.15, 0.1, 0.1, 0.1, 0.1])
+        ax.plot(expected_x, expected_y, '--', lw=1.2, color='grey', label=r"Fu et al.")
+        ax.fill_between(expected_x, expected_y - expected_err, expected_y + expected_err, alpha=0.25, color="grey")
+    ax.set_ylim(0,1)
+    ax.set_xlim(0,0.8)
+    ax.set_xlabel("Time [s]", fontsize=15)
+    ax.set_ylabel(r"$\hat{E}_{rec}$", fontsize=15)
     title = (r"Recoiling dynamics, normalized $E(t)/E(0)$" +
              f"\n" + r"$\gamma$" + f" = {gamma_val:.4f}")
-    ax.set_title(title, fontsize=12)
-    ax.legend(fontsize=9, frameon=False, ncol=2)
+    # ax.set_title(title, fontsize=12)
+    ax.legend(fontsize=9)
     ax.grid(False)
-    ax.set_ylim(0,1)
+    ax.set_ylim(0, 1)
     plt.tight_layout()
 
     out = os.path.join(root_dir, f"recoiling_all_LJ_gamma_{gamma_folder.split('_')[1]}.png")
     plt.savefig(out, dpi=300, bbox_inches='tight')
     plt.close(fig)
     print(f"Saved {out}")
+
+def plot_free_across_LJ_for_gamma(
+    config,
+    base_dir,
+    target_gamma,                 # float like 0.0055 or string "gamma_00055"
+    free_metric="end_to_end",     # "end_to_end" (default) or "max_pairwise"
+    aggregate_runs=True,          # if True: mean±std over run_*; if False: show each run
+    include_expected=True,
+    Box_Lx=None,                  # optional override for PBC in x
+    outname=None
+):
+    """
+    Plot normalized final extension vs wall shear stress for the FREE case,
+    aggregating over run_* per shear and drawing multiple LJ_* in one figure.
+
+    Directory structure assumed:
+        base_dir/
+          LJ_XXXXX/
+            gamma_YYYYY/
+              shear_SSS/
+                run_RRR/
+                  positions.npz
+
+    Normalization per LJ & gamma:
+        y = (E_final - E0) / (Lmax - E0), with E0 at shear==0 (or smallest).
+        Lmax = N * 2 * a (dynamic N from the first loaded positions file).
+    """
+
+    # ---------- small helpers ----------
+    def fmt_kT(val):
+        r = round(val)
+        if abs(val - r) < 1e-9:
+            return f"{int(r)} kT"
+        s = f"{val:.2f}".rstrip('0').rstrip('.')
+        return f"{s} kT"
+
+    def _compute_final_extension(positions, Lx, Ly, Lz, metric):
+        if metric == "end_to_end":
+            return float(end_to_end_extension_ts_pbc(positions, Lx, Ly, Lz)[-1])
+        else:
+            return float(max_pairwise_extension_ts_pbc(positions, Lx, Ly, Lz)[-1])
+
+    # ---------- styling / constants ----------
+    plt.style.use("seaborn-v0_8-whitegrid")
+    # colors = plt.get_cmap("tab20").colors
+    colors = plt.get_cmap("Dark2").colors
+
+    a = config["physical"]["a"]
+    # dyn_visc_SI is (dyn·s/cm²); wall shear stress τ = (shear_rate) * μ,
+    # then convert to dyn/cm² by multiplying by 10 (matching your earlier code path)
+    dyn_visc_SI = config["physical"]["VISC_dyn"] / 10.0
+
+    # box lengths / PBC
+    geom = config.get("geometry", {})
+    Lx_eff = Box_Lx if (Box_Lx is not None) else geom.get("BOX_Lx", None)
+    Ly_eff = geom.get("BOX_Ly", None) if geom.get("BOX_Ly", None) is not None else Lx_eff
+    Lz_eff = geom.get("BOX_Lz", None)
+
+    # expected (free) overlay — same as your earlier "Schneider et al." example
+    exp_x_raw = np.array([1, 10, 100, 400, 1100, 5000, 10000], dtype=float)
+    exp_y     = np.array([0.07,  0.07,   0.07,  0.07,    0.07,   0.75,   1], dtype=float)
+    exp_s     = np.array([0.07, 0.07, 0.07, 0.07,  0.07,  0.3,   0.3], dtype=float)
+    # exp_x = exp_x_raw * dyn_visc_SI * 10.0  # to dyn/cm²
+    exp_x = exp_x_raw # in shear rate 1/s
+
+    # parse/format gamma
+    gpat = re.compile(r"gamma_(\d{5})")
+    if isinstance(target_gamma, str) and gpat.match(target_gamma):
+        gamma_folder = target_gamma
+        gamma_val = int(gpat.match(target_gamma).group(1)) / 1e4
+    else:
+        g = float(target_gamma)
+        gamma_folder = f"gamma_{int(round(g*1e4)):05d}"
+        gamma_val = g
+
+    # collect LJ folders within base_dir
+    lj_pat = re.compile(r"LJ_(\d{5})")
+    entries = [d for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d))]
+    lj_dirs = [d for d in entries if lj_pat.match(d)] or entries
+
+    def _lj_key(d):
+        m = lj_pat.match(d)
+        return int(m.group(1)) if m else d
+    lj_dirs.sort(key=_lj_key)
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    any_curve = False
+
+    for i, lj in enumerate(lj_dirs):
+        lj_path = os.path.join(base_dir, lj)
+        gpath = os.path.join(lj_path, gamma_folder)
+        if not os.path.isdir(gpath):
+            continue
+
+        # Format LJ label as kT value like your tethered helper
+        m = lj_pat.match(lj)
+        if m:
+            lj_factor_4kT = int(m.group(1)) / 1e2     # “XX.XX × 4kT”
+            kT_value = lj_factor_4kT * 4.0            # convert to kT
+            lj_label_base = fmt_kT(kT_value)
+        else:
+            lj_label_base = lj
+
+        # Discover shear_* directories
+        shear_dirs = [d for d in os.listdir(gpath) if re.match(r"shear_\d+$", d)]
+        if not shear_dirs:
+            continue
+        shear_dirs.sort(key=lambda s: int(s.split('_')[1]))
+
+        # Dynamic Lmax from first file we encounter for this LJ/gamma
+        Lmax = None
+
+        xs, ys_mean, ys_std = [], [], []
+        run_points = {}  # if aggregate_runs=False, collect per-run points
+
+        for sd in shear_dirs:
+            shear_int = int(sd.split('_')[1])
+            sdir = os.path.join(gpath, sd)
+            run_dirs = [d for d in os.listdir(sdir) if re.match(r"run_\d+$", d)] or [""]
+
+            Efinals = []
+            per_run_val = {}
+
+            for r in run_dirs:
+                ddir = os.path.join(sdir, r) if r else sdir
+                f = os.path.join(ddir, "positions.npz")
+                if not os.path.isfile(f):
+                    continue
+                try:
+                    pos = np.load(f)["positions"]  # (T,N,D)
+                    if Lmax is None:
+                        N = pos.shape[1]
+                        Lmax = N * 2.0 * a
+                    Efin = _compute_final_extension(pos, Lx_eff, Ly_eff, Lz_eff, free_metric)
+                    Efinals.append(Efin)
+                    run_id = r if r else "run_00000"
+                    per_run_val[run_id] = Efin
+                except Exception as e:
+                    print(f"Skip {f}: {e}")
+
+            # test this
+            Lmax = np.max(Efinals) if Lmax is None else max(Lmax, np.max(Efinals))
+
+            if not Efinals:
+                continue
+
+            # x_val = shear_int * dyn_visc_SI * 10.0  # wall shear stress [dyn/cm^2]
+            x_val = shear_int # shear rate in 1/s
+            xs.append(x_val)
+            ys_mean.append(np.mean(Efinals))
+            ys_std.append(np.std(Efinals))
+
+            if not aggregate_runs:
+                for run_id, Efin in per_run_val.items():
+                    if run_id not in run_points:
+                        run_points[run_id] = {"x": [], "Efin": []}
+                    run_points[run_id]["x"].append(x_val)
+                    run_points[run_id]["Efin"].append(Efin)
+
+        if not xs or Lmax is None:
+            continue
+
+        xs = np.array(xs, float)
+        order = np.argsort(xs)
+        xs, ys_mean, ys_std = xs[order], np.array(ys_mean)[order], np.array(ys_std)[order]
+
+        # normalization E/Lmax 
+        # normalization (E - E0)/(Lmax - E0), E0 at shear==0 if present, else smallest shear
+        if np.any(xs == 0):
+            E0_mean = ys_mean[xs == 0][0]
+        else:
+            E0_mean = ys_mean[0]
+
+        # denom = Lmax - E0_mean
+        # normalization E/Lmax
+        denom = Lmax
+        if denom <= 0 or not np.isfinite(denom):
+            print(f"[WARN] Skipping {lj_label_base}: invalid normalization (denom={denom})")
+            continue
+
+        # y_mean_norm = (ys_mean - E0_mean) / denom
+        # normalization E/Lmax
+        y_mean_norm = ys_mean / denom
+        y_std_norm  = ys_std / denom
+
+        c = colors[i % len(colors)]
+        label = f"{lj_label_base} ({'e2e' if free_metric=='end_to_end' else 'max-diam'})"
+
+        if aggregate_runs:
+            ax.errorbar(xs, y_mean_norm, yerr=y_std_norm,
+                        fmt='o-', lw=1.6, markersize=4, capsize=3, color=c, label=label)
+        else:
+            # plot each run as a light curve normalized by its own E0
+            # (E0 per run is the run's value at shear==0 if present, else its smallest shear)
+            for rj, dct in sorted(run_points.items()):
+                x_run = np.array(dct["x"], float)
+                Efin  = np.array(dct["Efin"], float)
+                if x_run.size < 1:
+                    continue
+                ord_run = np.argsort(x_run)
+                x_run, Efin = x_run[ord_run], Efin[ord_run]
+                # find E0 per run
+                if np.any(x_run == 0):
+                    E0_r = float(Efin[x_run == 0][0])
+                else:
+                    E0_r = float(Efin[0])
+                den_r = Lmax - E0_r
+                if den_r <= 0 or not np.isfinite(den_r):
+                    continue
+                y_run = (Efin - E0_r) / den_r
+                ax.plot(x_run, y_run, 'o-', lw=1.0, ms=3, alpha=0.65, color=c,
+                        label=f"{label}:{rj}")
+
+        any_curve = True
+
+    if not any_curve:
+        print(f"[INFO] No usable data for gamma={gamma_folder} under {base_dir}.")
+        return
+
+    # expected overlay for free case
+    if include_expected:
+        ax.plot(exp_x, exp_y, linestyle='--', color='black', linewidth=1.6,
+                marker='s', markersize=4, label="Schneider et al. (free)")
+        ax.fill_between(exp_x, exp_y - exp_s, exp_y + exp_s,
+                        color='black', alpha=0.12, linewidth=0)
+
+    ax.set_xlabel(r"Shear rate [s$^{-1}$]", fontsize=15)
+    ax.set_ylabel(r"$\hat{E}^{final}_{free}$", fontsize=15)
+    ax.set_xscale("log")
+    # choose a sensible x-limit automatically (covers both your data and expected curve)
+    xmin = max(1e-1, min(ax.get_lines()[0].get_xdata())) if ax.get_lines() else 1e-1
+    xmax = max([np.max(ln.get_xdata()) for ln in ax.get_lines() if len(ln.get_xdata()) > 0] + [2000.0])
+    ax.set_xlim(xmin, xmax * 1.05)
+    ax.set_ylim(0, 1.2)
+    ax.legend(fontsize=9, frameon=False, ncols=1 if aggregate_runs else 2)
+    ax.grid(False)
+    plt.tight_layout()
+
+    if outname is None:
+        outname = f"free_extension_vs_shear_across_LJ_gamma_{int(round(gamma_val*1e4)):05d}"
+        if not aggregate_runs:
+            outname += "_allruns"
+        outname += f"_{'e2e' if free_metric=='end_to_end' else 'maxpair'}"
+        outname += ".png"
+
+    out_png = os.path.join(base_dir, outname)
+    plt.savefig(out_png, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    print(f"Saved {out_png}")

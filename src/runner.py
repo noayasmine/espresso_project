@@ -165,14 +165,23 @@ if __name__ == "__main__":
         add_polymer_positions(config, run_type)
 
     if run_type == "validation_uncoiling":
-        shear = float(sys.argv[2])
-        gamma = float(sys.argv[3])
-        LJ_strength = float(sys.argv[4])
-        run = int(sys.argv[5])
-        save_dir = str(sys.argv[6])
-
-        # set rud_id as seed
-        config["simulation"]["SEED"] = run
+        if len(sys.argv) == 7:
+            shear = float(sys.argv[2])
+            gamma = float(sys.argv[3])
+            LJ_strength = float(sys.argv[4])
+            run = int(sys.argv[5])
+            save_dir = str(sys.argv[6])
+            # set rud_id as seed
+            config["simulation"]["SEED"] = run
+            config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}/run_{run}/"
+        if len(sys.argv) == 6:
+            shear = float(sys.argv[2])
+            gamma = float(sys.argv[3])
+            LJ_strength = float(sys.argv[4])
+            save_dir = str(sys.argv[5])
+            config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}/"
+        
+        config["simulation"]["SAVE_VTK"] = True
         # set parameters to match the validation data from Fu et al.
         config["simulation"]["SHEAR"] = shear
         config["physical"]["GAMMA"] = gamma
@@ -184,9 +193,11 @@ if __name__ == "__main__":
         # config["physical"]["k"] = 6.5
         # for uncoiling_10000K
         config["physical"]["k"] = 650
+        # for uncoiling_1K
+        # config["physical"]["k"] = 0.065
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
-        config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}/run_{run}/"
+        # config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}/run_{run}/"
         add_polymer_positions(config, run_type)
 
     if run_type == "validation_uncoiling_free":
@@ -211,12 +222,17 @@ if __name__ == "__main__":
         config["geometry"]["AGRID"] = 1
         # need to decrease timestep due to large boxsize 
         # (i.e. large Ma number for LB for high shear rates)
-        config["simulation"]["TIME_STEP"] = 0.00025
-        config["simulation"]["LB_TIME_STEP"] = 0.00025
+        config["simulation"]["TIME_STEP"] = 0.001
+        config["simulation"]["LB_TIME_STEP"] = 0.001
+        
+        if shear == 10000:
+            config["simulation"]["TIME_STEP"] = 0.00025
+            config["simulation"]["LB_TIME_STEP"] = 0.00025
+
         config["simulation"]["TETHERED"] = False
-        config["simulation"]["TOTAL_TIME"] = 0.4
+        config["simulation"]["TOTAL_TIME"] = 0.3
         # extra minimization steps needed for the large polymer
-        config["simulation"]["MINIMIZATION_STEPS"] = 1000
+        config["simulation"]["MINIMIZATION_STEPS"] = 500
         # large Fene spring constant because a lot of 
         # overextension due to big size of polymer
         config["physical"]["k"] = 650
@@ -247,7 +263,7 @@ if __name__ == "__main__":
         config["simulation"]["N_POLYMERS"] = 1
         config["simulation"]["TOTAL_TIME"] = 0.8
         config["physical"]["k"] = 650
-        config["physical"]["N_MONOMERS"] = 60
+        config["physical"]["N_MONOMERS"] = 30
 
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
@@ -274,7 +290,7 @@ if __name__ == "__main__":
         config["geometry"]["AGRID"] = gridsize
         config["simulation"]["TOTAL_TIME"] = 0.4
         # needed to decrease of timestep due to large boxsize (i.e. large Ma number for LB for high shear rates)
-        config["simulation"]["TIME_STEP"] = 0.00025
+        config["simulation"]["TIME_STEP"] = 0.0005
         config["physical"]["k"] = 650
         config["simulation"]["MINIMIZATION_STEPS"] = 1000
         config["simulation"]["TETHERED"] = False
