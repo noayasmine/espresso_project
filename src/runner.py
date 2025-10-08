@@ -12,8 +12,16 @@ def load_config(path):
 def add_dependent_parameters(config, LJ_strength=1):
     config["physical"]["r_0"] = 2 * config["physical"]["a"]
     config["physical"]["sigma"] = (2 ** (-1/6)) * config["physical"]["r_0"]
-    config["physical"]["epsilon"] = LJ_strength * 4 * config["physical"]["KT"]
-    config["physical"]["cutoff"] = 8 * config["physical"]["a"]
+    config["physical"]["epsilon"] = LJ_strength * config["physical"]["KT"]
+    config["physical"]["cutoff"] = 4 * config["physical"]["a"]
+    # Compute velocity (in MD units, i.e. 1e2 m/s )
+    config["simulation"]["VELOCITY"] = config["simulation"]["SHEAR"] * 1e-4 * (config["geometry"]["BOX_Lz"] - config["geometry"]["AGRID"])
+
+def add_dependent_parameters_finer_model(config, LJ_strength=1):
+    config["physical"]["r_0"] = 0.0085 + config["physical"]["a"]
+    config["physical"]["sigma"] = (2 ** (-1/6)) * config["physical"]["r_0"]
+    config["physical"]["epsilon"] = LJ_strength * config["physical"]["KT"]
+    config["physical"]["cutoff"] = 4 * config["physical"]["r_0"]
     # Compute velocity (in MD units, i.e. 1e2 m/s )
     config["simulation"]["VELOCITY"] = config["simulation"]["SHEAR"] * 1e-4 * (config["geometry"]["BOX_Lz"] - config["geometry"]["AGRID"])
 
@@ -181,18 +189,20 @@ if __name__ == "__main__":
             save_dir = str(sys.argv[5])
             config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}/"
         
-        config["simulation"]["SAVE_VTK"] = True
+        # config["simulation"]["SAVE_VTK"] = True
         # set parameters to match the validation data from Fu et al.
         config["simulation"]["SHEAR"] = shear
         config["physical"]["GAMMA"] = gamma
         config["simulation"]["N_POLYMERS"] = 1
         config["geometry"]["AGRID"] = 1
         # change number of monomers in the polymer
-        config["physical"]["N_MONOMERS"] = 60
+        config["physical"]["N_MONOMERS"] = 50
+        config["physical"]["a"] = 0.03
         # for uncoiling for uncoiling_100K
         # config["physical"]["k"] = 6.5
         # for uncoiling_10000K
-        config["physical"]["k"] = 650
+        # config["physical"]["k"] = 650
+        config["physical"]["k"] = 100000
         # for uncoiling_1K
         # config["physical"]["k"] = 0.065
         add_timeloops_from_gridsize(config)
@@ -298,6 +308,31 @@ if __name__ == "__main__":
         add_dependent_parameters(config, LJ_strength)
         config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}"
         add_polymer_positions(config, run_type)
+    
+    
+    if run_type == "fine_model_uncoiling":
+        run_type = "validation_uncoiling"
+        shear = float(sys.argv[2])
+        gamma = float(sys.argv[3])
+        LJ_strength = float(sys.argv[4])
+        save_dir = str(sys.argv[5])
+
+        # finer model for vWF, 5 beads per monomer with a=0.003 mu m 
+        # with tether of 8.5 nm between each bead
+        config["physical"]["a"] = 0.003
+        config["simulation"]["SHEAR"] = shear
+        config["physical"]["GAMMA"] = gamma
+        config["simulation"]["N_POLYMERS"] = 1
+        config["geometry"]["AGRID"] = 1
+        config["physical"]["k"] = 6500
+        config["physical"]["N_MONOMERS"] = 5 * config["physical"]["N_MONOMERS"]
+        config["simulation"]["SAVE_VTK"] = True
+
+        add_timeloops_from_gridsize(config)
+        add_dependent_parameters_finer_model(config, LJ_strength)
+        config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}"
+        add_polymer_positions(config, run_type)
+    
 
     lbf, forces, positions, drag_forces = run_simulation(config,run_type)
 

@@ -95,7 +95,6 @@ def build_polymers(system, run_type, n_monomers, n_polymers, start_positions, po
             if TETHERED==True:
                 first_bead.fix = [True, True, True]
 
-
 def run_simulation(params,run_type):
     # Unpack from structured config
     sim = params["simulation"]
@@ -123,6 +122,7 @@ def run_simulation(params,run_type):
     KT = phys["KT"]
     GAMMA = phys["GAMMA"]
     N_MONOMERS = phys["N_MONOMERS"]
+    a = phys["a"]
     k, r_0, d_r_max = phys["k"], phys["r_0"], phys["d_r_max"]
     epsilon, sigma, cutoff, shift = phys["epsilon"], phys["sigma"], phys["cutoff"], phys["shift"]
     
@@ -142,11 +142,12 @@ def run_simulation(params,run_type):
         os.makedirs(outdir, exist_ok=True)
 
     MA = (np.sqrt(3) * VELOCITY * LB_TIME_STEP) / AGRID
-    logging.info(f"Running simulation: shear={int(SHEAR*1e4)}, n_polymers={N_POLYMERS}, n_monomers={N_MONOMERS}, "\
-    f"gridsize={AGRID}, MD_timestep={TIME_STEP}, LB_timestep={LB_TIME_STEP}, viscosity={VISC}, seed={SEED}, velocity={VELOCITY}, "\
-    f"Ma={MA}")
+    logging.info(f"Running simulation: shear={int(SHEAR*1e4)}, n_polymers={N_POLYMERS}, n_monomers={N_MONOMERS}, a={a}"\
+    f"gridsize={AGRID}, MD_timestep={TIME_STEP}, LB_timestep={LB_TIME_STEP}, viscosity={VISC}, seed={SEED}, velocity={VELOCITY}, Ma={MA}")
+    logging.info(f"FENE parameters: k={k}, r_0={r_0}, dr_max={d_r_max}")
 
-    vals = lb_units_and_gammas(agrid=AGRID, tau=TIME_STEP*5, nu_md=VISC)
+
+    vals = lb_units_and_gammas(agrid=AGRID, tau=LB_TIME_STEP, nu_md=VISC)
     for val, v in vals.items():
         logging.info(f"{val}: {v}")
 
@@ -162,6 +163,7 @@ def run_simulation(params,run_type):
     system.non_bonded_inter[0, 0].lennard_jones.set_params(epsilon=epsilon, sigma=sigma, shift=shift, cutoff=cutoff)
     fene = espressomd.interactions.FeneBond(k=k, r_0=r_0, d_r_max=d_r_max)
     system.bonded_inter.add(fene)
+
     logging.info(f"LJ parameters: epsilon={epsilon}, sigma={sigma}, shift={shift}, cutoff={cutoff}")
 
     # Wall constraints

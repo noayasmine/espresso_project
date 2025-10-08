@@ -72,7 +72,7 @@ def moving_average_centered(x, N):
 # ---------- Validation plot (dynamic N + optional Box_Lx override + free_metric) ----------
 def plot_validation_results(config, base_dir, validation_type="free",
                             Box_Lx=None, free_metric="end_to_end",
-                            target_gamma=None):
+                            target_gamma=None, fine_model=False, a=0.05):
     """
     Aggregate extension per shear and plot normalized vs wall shear stress.
     Normalization per gamma: (E_final - E0) / (Lmax - E0), with E0 at shear==0 (or smallest).
@@ -88,7 +88,6 @@ def plot_validation_results(config, base_dir, validation_type="free",
     # color_cycle = plt.get_cmap("tab20").colors
     color_cycle = plt.get_cmap("Dark2").colors
 
-    a = config["physical"]["a"]
     dyn_visc_SI = config["physical"]["VISC_dyn"] / 10
 
     # box lengths (Ly falls back to effective Lx if missing)
@@ -244,7 +243,7 @@ def plot_validation_results(config, base_dir, validation_type="free",
 # ---------- Time series (dynamic N + optional Box_Lx override + free_metric) ----------
 def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=1,
                      validation_type="free", Box_Lx=None, free_metric="end_to_end", time_step=None, k_fene=6.5, 
-                     monomer_index=None):
+                     monomer_index=None, fine_model=False, a=0.05):
     """
     plot_type = 'extension' (normalized extension over time),
                 'force'     (per-monomer + cumulative summary; smoothed)
@@ -258,7 +257,6 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
     plt.style.use("seaborn-v0_8-whitegrid")
     color_cycle = plt.get_cmap("Dark2").colors
 
-    a = config["physical"]["a"]
     TIMESTEP = config["simulation"]["TIME_STEP"]; STEPS = config["simulation"]["STEPS"]
     if time_step != None:
         TIMESTEP = time_step
@@ -333,6 +331,8 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
                 N_here = pos.shape[1]
                 print(f"N monomers = {N_here}")
                 Lmax = N_here * 2 * a
+                if fine_model:
+                    Lmax = 3
 
                 vtype = str(validation_type).lower()
                 # if vtype == "tethered":
@@ -423,8 +423,8 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
                     Fm = moving_average_centered(Fmag, avg_window)                # (T,)
                     t = np.arange(len(Fm)) * dt
 
-                    nL = int(len(Fm)/4) if len(Fm) > 0 else 0          # last quarter (your comment)
-                    #nL = int(len(Fm))                                    # currently full length
+                    # nL = int(len(Fm)/4) if len(Fm) > 0 else 0          # last quarter (your comment)
+                    nL = int(len(Fm))                                    # currently full length
                     if nL > 0:
                         ax.plot(t[-nL:], Fm[-nL:], lw=1.5,
                                 # color=color_cycle[i % 20],
@@ -439,12 +439,12 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
             # ax.set_title(f"Force vs time (monomer {monomer_index})\n{subtitle}", fontsize=14)
             # if ax.has_data(): ax.legend(frameon=False, fontsize=10, ncol=2)
             # ax.set_xlim(0,0.4)
-            ax.set_xlim(0.3,0.4)
+            #ax.set_xlim(0.3,0.4)
             ax.grid(False); plt.tight_layout()
             out = os.path.join(base_dir, f"force_monomer_{monomer_index}_vs_time.png")
             plt.savefig(out, dpi=300, bbox_inches='tight'); plt.close(fig)
             print(f"Saved {out}")
-            # return
+            return
 
         fig, axs = plt.subplots(N_detect, 1, figsize=(10, 2*N_detect), sharex=True)
         if N_detect == 1: axs = [axs]
@@ -765,19 +765,25 @@ def plot_cumulative_force_across_gammas(
     target_shear,
     avg_window=100,
     start_from_right=30,   # how many monomers (from the chain end) to include in the cumulative
-    use_last_fraction=0.25 # take last 25% of time series for averaging; set None for full length
+    use_last_fraction=0.25, # take last 25% of time series for averaging; set None for full length
+    fine_model=False
 ):
     """
     Plot cumulative tensile force vs monomer index for all gamma_* in lj_dir at a given shear,
-    and compute a reduced chi2 = mean((diff/sigma_ref)^2), i.e. squared error divided
-    by the squared reference uncertainty.
+    and compute a reduced chi2-like metric = mean((diff/sigma_ref)^2).
+
+    If fine_model is True:
+      - validation reference uses 0.5/6 pN per monomer (with 0.1/6 pN uncertainty per monomer),
+      - number of monomers is taken from the data (e.g., 150 for fine model).
     """
+    import os, re
+    import numpy as np
+    import matplotlib.pyplot as plt
 
     plt.style.use("seaborn-v0_8-whitegrid")
-    #color_cycle = plt.get_cmap("tab20").colors
-    # color_cycle = plt.get_cmap("tab20b").colors
     color_cycle = plt.get_cmap("Dark2").colors
 
+    # --- time scaling (unchanged) ---
     TIMESTEP = config["simulation"]["TIME_STEP"]
     STEPS    = config["simulation"]["STEPS"]
     dt = 1e-4 * TIMESTEP * STEPS
@@ -805,6 +811,7 @@ def plot_cumulative_force_across_gammas(
     N_detect = None
     blocks = {}
 
+    # ---- collect blocks per gamma ----
     for gdir in gamma_dirs:
         gval = _gamma_float(gdir)
         if gval is None:
@@ -824,7 +831,10 @@ def plot_cumulative_force_across_gammas(
             N_detect = F.shape[1]
         N_use = min(N_detect, F.shape[1])
 
+        # pN conversion (assuming original units → nN? keep as in your code)
         Fmag = np.linalg.norm(F[:, :N_use, :], axis=2) * 1000.0
+
+        # moving_average_centered is assumed available in your environment
         Fm   = moving_average_centered(Fmag, avg_window)
 
         if use_last_fraction is not None and 0 < use_last_fraction <= 1.0:
@@ -835,24 +845,29 @@ def plot_cumulative_force_across_gammas(
 
         blocks[gval] = tail
 
-    if not blocks:
+    if not blocks or N_detect is None:
         print("No usable force data found for this LJ folder and shear.")
         return {}
+
+    # ---- reference per-monomer (standard vs fine model) ----
+    ref_per_mono   = (0.5/5.0) if fine_model else 0.5     # pN per monomer
+    sigma_per_mono = (0.1/5.0) if fine_model else 0.1     # pN per monomer (keeps same relative band)
 
     fig, ax = plt.subplots(figsize=(6, 4))
     idx = np.arange(0, N_detect)
     start = min(start_from_right, N_detect)
 
-    # Reference line (0.5 pN/monomer cumulatively) and uncertainty
-    steps_from_right = (start - np.arange(1, start+1) + 1)
+    # Reference line (per-monomer cumulatively from the right) and uncertainty
+    steps_from_right = (start - np.arange(1, start+1) + 1)  # 1,2,3,...,start
     ref = np.full(N_detect, np.nan)
-    ref[:start] = 0.5 * steps_from_right
+    ref[:start] = ref_per_mono * steps_from_right
     sigma_ref = np.full(N_detect, np.nan)
-    sigma_ref[:start] = 0.1 * steps_from_right   # grows linearly with steps
+    sigma_ref[:start] = sigma_per_mono * steps_from_right   # grows linearly with steps
 
     mse_by_gamma = {}
 
     for i, (gval, block) in enumerate(sorted(blocks.items(), key=lambda kv: kv[0])):
+        # take last 'start' monomers from the chain end: reverse index
         sub = block[:, :start][:, ::-1]
         cum = np.cumsum(sub, axis=1)[:, ::-1]
         mu  = cum.mean(axis=0)
@@ -875,22 +890,36 @@ def plot_cumulative_force_across_gammas(
 
     # Reference + band
     mask = ~np.isnan(ref)
-    ax.plot(idx, ref, '--', lw=1.2, color='grey', label=r"Fu et al. $0.5 \pm 0.1$ pN/mono")
+    ref_label = (r"Ref: $0.5/6 \pm 0.1/6$ pN/mono" if fine_model
+                 else r"Ref: $0.5 \pm 0.1$ pN/mono")
+    ax.plot(idx, ref, '--', lw=1.2, color='grey', label=ref_label)
     ax.fill_between(idx[mask], ref[mask] - sigma_ref[mask], ref[mask] + sigma_ref[mask], alpha=0.25, color="grey")
 
     ax.set_xlabel("Monomer index", fontsize=15)
     ax.set_ylabel("Tensile force [pN]", fontsize=15)
-    ax.set_xticks(np.arange(0, N_detect+1, 5))
-    ax.set_xlim(-1, max(30, N_detect))
+
+    # Adaptive x ticks for long chains
+    if N_detect <= 60:
+        xtick_step = 5
+    elif N_detect <= 150:
+        xtick_step = 10
+    else:
+        xtick_step = max(1, N_detect // 15)
+    ax.set_xticks(np.arange(0, N_detect+1, xtick_step))
+    ax.set_xlim(-1, max(start, N_detect))
+
     ax.grid(False)
     ax.legend(frameon=False, fontsize=9, ncol=1)
     title_top = f"Cumulative force vs monomer index (shear={target_shear})"
     if lj_text:
         title_top += f"\n{lj_text}"
-    # plt.title(title_top, fontsize=14)
+    if fine_model:
+        title_top += " [fine model]"
+    # ax.set_title(title_top, fontsize=14)
     plt.tight_layout()
 
-    out = os.path.join(lj_dir, f"force_cumulative_vs_monomer_all_gamma_shear_{target_shear}.png")
+    suffix = "_fine" if fine_model else ""
+    out = os.path.join(lj_dir, f"force_cumulative_vs_monomer_all_gamma_shear_{target_shear}{suffix}.png")
     plt.savefig(out, dpi=300, bbox_inches='tight')
     plt.close(fig)
     print(f"Saved {out}")
