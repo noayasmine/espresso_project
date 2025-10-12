@@ -142,7 +142,7 @@ def run_simulation(params,run_type):
         os.makedirs(outdir, exist_ok=True)
 
     MA = (np.sqrt(3) * VELOCITY * LB_TIME_STEP) / AGRID
-    logging.info(f"Running simulation: shear={int(SHEAR*1e4)}, n_polymers={N_POLYMERS}, n_monomers={N_MONOMERS}, a={a}"\
+    logging.info(f"Running simulation: shear={int(SHEAR*1e4)}, n_polymers={N_POLYMERS}, n_monomers={N_MONOMERS}, a={a}, "\
     f"gridsize={AGRID}, MD_timestep={TIME_STEP}, LB_timestep={LB_TIME_STEP}, viscosity={VISC}, seed={SEED}, velocity={VELOCITY}, Ma={MA}")
     logging.info(f"FENE parameters: k={k}, r_0={r_0}, dr_max={d_r_max}")
 

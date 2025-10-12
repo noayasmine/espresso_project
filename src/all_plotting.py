@@ -537,7 +537,8 @@ def plot_tethered_across_LJ_for_gamma(
     errors_name=None,
     aggregate_runs=True,
     skip = {},         # if True, use mean±std across run_* per shear; if False, plot each run
-    N_mono=30
+    N_mono=30,
+    a=0.05
 ):
 
     # ---------- helpers ----------
@@ -557,7 +558,6 @@ def plot_tethered_across_LJ_for_gamma(
     plt.style.use("seaborn-v0_8-whitegrid")
     colors = plt.get_cmap("Dark2").colors
     
-    a = config["physical"]["a"]
     dyn_visc_SI = config["physical"]["VISC_dyn"] / 10.0   # -> dyn·s/cm²
 
     # expected tethered curve
@@ -565,8 +565,13 @@ def plot_tethered_across_LJ_for_gamma(
     exp_y = np.array([0.00, 0.35, 0.55, 0.63, 0.70, 0.75, 0.81, 0.85, 0.90, 0.92, 0.94, 0.96, 0.96, 0.96], float)
     if N_mono==30:
         exp_s = np.array([0.1, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2], float)
-    if N_mono==60:
+    elif N_mono==50 and a==0.03:
+        exp_s = np.array([0.1, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2], float)
+    elif N_mono==60:
         exp_s = np.array([0.07, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15], float)
+    elif N_mono==100 and a==0.03:
+        exp_s = np.array([0.07, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15], float)
+
     # parse/format gamma
     gpat = re.compile(r"gamma_(\d{5})")
     if isinstance(target_gamma, str) and gpat.match(target_gamma):
@@ -601,7 +606,10 @@ def plot_tethered_across_LJ_for_gamma(
         m = lj_pat.match(lj)
         if m:
             lj_factor_4kT = int(m.group(1)) / 1e2
-            kT_value = lj_factor_4kT * 4.0
+            if a==0.05:
+                kT_value = lj_factor_4kT * 4.0
+            if a==0.03:
+                kT_value = lj_factor_4kT
             lj_label_base = fmt_kT(kT_value)
         else:
             lj_label_base = lj
