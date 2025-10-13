@@ -196,18 +196,12 @@ if __name__ == "__main__":
         config["simulation"]["N_POLYMERS"] = 1
         config["geometry"]["AGRID"] = 1
         # change number of monomers in the polymer
-        config["physical"]["N_MONOMERS"] = 100
+        config["physical"]["N_MONOMERS"] = 50
         config["physical"]["a"] = 0.03
         config["physical"]["k"] = 1000
-        config["physical"]["d_r_max"] = 4 * config["physical"]["a"]
+        config["physical"]["d_r_max"] = 2 * config["physical"]["a"]
         # set total time to 0.2 for multiple runs
-        # config["simulation"]["TOTAL_TIME"] = 0.2
-        # for uncoiling for uncoiling_100K
-        # config["physical"]["k"] = 6.5
-        # for uncoiling_10000K
-        # config["physical"]["k"] = 650
-        # for uncoiling_1K
-        # config["physical"]["k"] = 0.065
+        config["simulation"]["TOTAL_TIME"] = 0.2
         
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)

@@ -94,7 +94,7 @@ config = load_config(config_path)
 #         plot_time_series(config, base_dir_gamma, plot_type="extension", validation_type="tethered", k_fene=650)
 #         plot_time_series(config, base_dir_gamma, plot_type="force", validation_type="tethered", target_shear=11636, monomer_index=10)
 
-base_dir = "/gpfs/home4/nroebersen/espresso_project/data/corrected_a_corrected_rmax/N100/validation_uncoil_k1000/"
+base_dir = "/gpfs/home4/nroebersen/espresso_project/data/a_003_drmax_006/N100/validation_uncoil_k100/"
 LJ_folders = [f for f in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, f))]
 for LJ_folder in LJ_folders:
     base_dir_LJ = os.path.join(base_dir, LJ_folder)
@@ -258,7 +258,7 @@ for LJ_folder in LJ_folders:
 #     skip = {"LJ_00005", "LJ_00050", "LJ_00100", "LJ_00200"},
 # )
 
-base_dir = "/gpfs/home4/nroebersen/espresso_project/data/corrected_a_corrected_rmax/N100/validation_uncoil_k1000/"
+base_dir = "/gpfs/home4/nroebersen/espresso_project/data/a_003_drmax_006/N100/validation_uncoil_k1000/"
 target_gamma = "gamma_00090"
 plot_tethered_across_LJ_for_gamma(
     config,
