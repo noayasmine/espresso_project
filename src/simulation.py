@@ -188,7 +188,7 @@ def run_simulation(params,run_type):
     # Polymers
     logging.info("Build Polymer(s).")
     build_polymers(system, run_type, N_MONOMERS, N_POLYMERS, START_POSITIONS, POSITIONS, fene, r_0, SEED, TETHERED)
-    system.non_bonded_inter[0, 1].soft_sphere.set_params(a=1e-3, n=1.2, offset=0, cutoff=2 * phys["a"])
+    system.non_bonded_inter[0, 1].soft_sphere.set_params(a=1e-3, n=1.2, offset=0, cutoff=phys["a"])
 
     particle_ids = [p.id for p in system.part.select(type=0)]
     forces = espressomd.observables.ParticleForces(ids=particle_ids)

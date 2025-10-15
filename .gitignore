@@ -6,6 +6,7 @@ __pycache__/
 .DS_Store
 data/
 validation_data_old/
+validation_data_old2/
 validation_data/
 *.avi
 *.png

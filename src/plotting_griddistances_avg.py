@@ -5,7 +5,7 @@ import re
 import json
 # import seaborn
 
-def compute_avg_polymer_distance(npz_path, n_polymers=2, monomers_per_polymer=30):
+def compute_avg_polymer_distance(npz_path, n_polymers=2, monomers_per_polymer=50):
     try:
         data = np.load(npz_path)
         if "positions" not in data:
@@ -82,6 +82,7 @@ def plot_grid_results_avg(config, base_dir, plot_mode="mean_std"):
                         time_s = np.arange(len(avg_distances)) * dt
                         run_curves.append(avg_distances)
             print(len(run_curves))
+
             if run_curves:
                 try:
                     run_array = np.stack(run_curves)
@@ -117,7 +118,7 @@ def plot_grid_results_avg(config, base_dir, plot_mode="mean_std"):
             if plot_mode == "mean_std":
                 mean = item[2]
                 std = item[3]
-                label = f"grid={grid_value}" + r"$\mu m$"
+                label = f"grid={grid_value}" + r"$~\mathrm{\mu m}$"
                 color = color_cycle[i % len(color_cycle)]
                 ax.plot(time_s, mean, label=label, color=color,
                         linewidth=1.5, marker='o', markersize=2)
@@ -135,6 +136,7 @@ def plot_grid_results_avg(config, base_dir, plot_mode="mean_std"):
         ax.tick_params(axis='both', labelsize=18)
         ax.grid(False)
         ax.set_xlim(0,0.1)
+        # ax.set_ylim(0.05,0.11)
         if shear_value==1000:
             ax.legend(fontsize=15, frameon=False)
 

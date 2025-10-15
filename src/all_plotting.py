@@ -438,8 +438,9 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
             ax.set_ylabel(f"Drag force [pN]", fontsize=15)
             # ax.set_title(f"Force vs time (monomer {monomer_index})\n{subtitle}", fontsize=14)
             # if ax.has_data(): ax.legend(frameon=False, fontsize=10, ncol=2)
-            # ax.set_xlim(0,0.4)
-            #ax.set_xlim(0.3,0.4)
+            # ax.set_xlim(0.14,0.2)
+            # ax.set_ylim(0.45,0.52)
+            # ax.set_xlim(0.3,0.4)
             ax.grid(False); plt.tight_layout()
             out = os.path.join(base_dir, f"force_monomer_{monomer_index}_vs_time.png")
             plt.savefig(out, dpi=300, bbox_inches='tight'); plt.close(fig)
@@ -893,16 +894,16 @@ def plot_cumulative_force_across_gammas(
             idx, y, yerr=e,
             marker='o', lw=1.2, elinewidth=1, capsize=3, markersize=3,
             color=color_cycle[i % len(color_cycle)],
-            label=fr"$\gamma$={gval:.4f}" + r" ($\chi^{2}_{14}$="+ f"{round(norm_mse,2)})"
+            label=fr"$\gamma$={gval:.4f}" + r" ($t^{2}_{50}$="+ f"{round(norm_mse,3)})"
         )
 
     # Reference + band
     mask = ~np.isnan(ref)
-    ref_label = (r"Ref: $0.5/6 \pm 0.1/6$ pN/mono" if fine_model
-                 else r"Ref: $0.5 \pm 0.1$ pN/mono")
+    ref_label = (r"Fu et al. $0.5/6 \pm 0.1/6$ pN/mono" if fine_model
+                 else r"Fu et al. $0.5 \pm 0.1$ pN/mono")
     ax.plot(idx, ref, '--', lw=1.2, color='grey', label=ref_label)
     ax.fill_between(idx[mask], ref[mask] - sigma_ref[mask], ref[mask] + sigma_ref[mask], alpha=0.25, color="grey")
-
+    ax.set_xlim(0,0.1)
     ax.set_xlabel("Monomer index", fontsize=15)
     ax.set_ylabel("Tensile force [pN]", fontsize=15)
 

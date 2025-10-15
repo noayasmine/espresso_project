@@ -2,10 +2,10 @@
   "physical": {
     "KT": 4.280012e-06,
     "GAMMA": 0.009,
-    "N_MONOMERS": 30,
+    "N_MONOMERS": 50,
     "a": 0.03,
     "k": 1000,
-    "d_r_max": 0.06,
+    "d_r_max": 0.12,
     "shift": "auto",
     "VISC_dyn": 0.11
   },

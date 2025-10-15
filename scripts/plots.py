@@ -25,11 +25,16 @@ config_path = "/gpfs/home4/nroebersen/espresso_project/configs/default.json"
 config = load_config(config_path)
 
 # plot the grid distances plots
-# base_dir = "/home/nroebersen/espresso_project/validation_data/test_grids_1K"
-# plot_grid_results_avg(config, base_dir, plot_mode="mean_std")
+base_dir = "/home/nroebersen/espresso_project/validation_data/test/test_grids_k1"
+plot_grid_results_avg(config, base_dir, plot_mode="mean_std")
+base_dir = "/home/nroebersen/espresso_project/validation_data/test/test_grids_k10"
+plot_grid_results_avg(config, base_dir, plot_mode="mean_std")
 # base_dir = "/home/nroebersen/espresso_project/validation_data/test_grids_100K"
 # plot_grid_results_avg(config, base_dir, plot_mode="mean_std")
 # base_dir = "/home/nroebersen/espresso_project/validation_data/test_grids_10000K"
+# plot_grid_results_avg(config, base_dir, plot_mode="mean_std")
+
+# base_dir = "/home/nroebersen/espresso_project/data/test/test_grids_k1000"
 # plot_grid_results_avg(config, base_dir, plot_mode="mean_std")
 
 # make plot for tensile force validation
@@ -38,18 +43,20 @@ config = load_config(config_path)
 #     use_last_fraction=0.25)
 
 # make plot for tethered uncoiling data
-# base_dir = "/gpfs/home4/nroebersen/espresso_project/data/timeseries/validation_uncoil_10000K/"
-# LJ_folders = [f for f in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, f))]
-# for LJ_folder in LJ_folders:
-#     base_dir_LJ = os.path.join(base_dir, LJ_folder)
-#     plot_validation_results(config, base_dir_LJ, validation_type="tethered", target_gamma=0.0055)
-#     plot_cumulative_force_across_gammas(config, base_dir_LJ, target_shear=11636, avg_window=1, use_last_fraction=0.25)
-#     gamma_folders = [f for f in os.listdir(base_dir_LJ) if os.path.isdir(os.path.join(base_dir_LJ, f))]
+base_dir = "/gpfs/home4/nroebersen/espresso_project/validation_data/single_runs/N50/validation_uncoil_k10/"
+LJ_folders = [f for f in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, f))]
+for LJ_folder in LJ_folders:
+    base_dir_LJ = os.path.join(base_dir, LJ_folder)
+    plot_validation_results(config, base_dir_LJ, validation_type="tethered")
+    plot_cumulative_force_across_gammas(config, base_dir_LJ, target_shear=11636, avg_window=1,
+    use_last_fraction=0.50, start_from_right=50)
 
-#     for gamma_folder in gamma_folders:
-#         base_dir_gamma = os.path.join(base_dir_LJ, gamma_folder)
-#         plot_time_series(config, base_dir_gamma, plot_type="extension", validation_type="tethered", k_fene=650)
-#         plot_time_series(config, base_dir_gamma, plot_type="force", validation_type="tethered", target_shear=11636, monomer_index=10)
+    gamma_folders = [f for f in os.listdir(base_dir_LJ) if os.path.isdir(os.path.join(base_dir_LJ, f))]
+
+    for gamma_folder in gamma_folders:
+        base_dir_gamma = os.path.join(base_dir_LJ, gamma_folder)
+        plot_time_series(config, base_dir_gamma, plot_type="extension", validation_type="tethered", k_fene=10, a=0.03)
+        plot_time_series(config, base_dir_gamma, plot_type="force", validation_type="tethered", target_shear=11636, monomer_index=10, a=0.03)
 
 # base_dir = "/gpfs/home4/nroebersen/espresso_project/data/timeseries/validation_uncoil_100K/"
 # LJ_folders = [f for f in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, f))]
@@ -79,35 +86,6 @@ config = load_config(config_path)
 #         base_dir_gamma = os.path.join(base_dir_LJ, gamma_folder)
 #         plot_time_series(config, base_dir_gamma, plot_type="extension", validation_type="tethered", k_fene=0.065)
  
-# base_dir = "/gpfs/home4/nroebersen/espresso_project/data/fine_model/validation_uncoil_10000K/"
-# LJ_folders = [f for f in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, f))]
-# for LJ_folder in LJ_folders:
-#     base_dir_LJ = os.path.join(base_dir, LJ_folder)
-#     plot_validation_results(config, base_dir_LJ, validation_type="tethered", target_gamma=0.0055, fine_model=True)
-#     plot_cumulative_force_across_gammas(config, base_dir_LJ, target_shear=11636, avg_window=1,
-#     use_last_fraction=0.25, start_from_right=150,fine_model=True)
-
-#     gamma_folders = [f for f in os.listdir(base_dir_LJ) if os.path.isdir(os.path.join(base_dir_LJ, f))]
-
-#     for gamma_folder in gamma_folders:
-#         base_dir_gamma = os.path.join(base_dir_LJ, gamma_folder)
-#         plot_time_series(config, base_dir_gamma, plot_type="extension", validation_type="tethered", k_fene=650)
-#         plot_time_series(config, base_dir_gamma, plot_type="force", validation_type="tethered", target_shear=11636, monomer_index=10)
-
-base_dir = "/gpfs/home4/nroebersen/espresso_project/data/a_003_drmax_006/N100/validation_uncoil_k100/"
-LJ_folders = [f for f in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, f))]
-for LJ_folder in LJ_folders:
-    base_dir_LJ = os.path.join(base_dir, LJ_folder)
-    plot_validation_results(config, base_dir_LJ, validation_type="tethered")
-    plot_cumulative_force_across_gammas(config, base_dir_LJ, target_shear=11636, avg_window=1,
-    use_last_fraction=0.25, start_from_right=100)
-
-    gamma_folders = [f for f in os.listdir(base_dir_LJ) if os.path.isdir(os.path.join(base_dir_LJ, f))]
-
-    for gamma_folder in gamma_folders:
-        base_dir_gamma = os.path.join(base_dir_LJ, gamma_folder)
-        plot_time_series(config, base_dir_gamma, plot_type="extension", validation_type="tethered", k_fene=1000, a=0.03)
-        plot_time_series(config, base_dir_gamma, plot_type="force", validation_type="tethered", target_shear=11636, monomer_index=10, a=0.03)
 
 
 # base_dir = "/gpfs/home4/nroebersen/espresso_project/data/timeseries/validation_uncoil_free_10000K_04s_Schneider"
@@ -258,17 +236,17 @@ for LJ_folder in LJ_folders:
 #     skip = {"LJ_00005", "LJ_00050", "LJ_00100", "LJ_00200"},
 # )
 
-base_dir = "/gpfs/home4/nroebersen/espresso_project/data/a_003_drmax_006/N100/validation_uncoil_k1000/"
-target_gamma = "gamma_00090"
-plot_tethered_across_LJ_for_gamma(
-    config,
-    base_dir,
-    target_gamma,
-    aggregate_runs=True,
-    N_mono=50,
-    a=0.03,
-    skip = {"LJ_00300", "LJ_00600", "LJ_01000", "LJ_02400"}
-)
+# base_dir = "/gpfs/home4/nroebersen/espresso_project/validation_data/N50/validation_uncoil_k1000/"
+# target_gamma = "gamma_00090"
+# plot_tethered_across_LJ_for_gamma(
+#     config,
+#     base_dir,
+#     target_gamma,
+#     aggregate_runs=True,
+#     N_mono=50,
+#     a=0.03
+#     #skip = {"LJ_00300", "LJ_00600", "LJ_01000", "LJ_02400"}
+# )
 
 # base_dir = "/gpfs/home4/nroebersen/espresso_project/validation_data/validation_uncoil_10000K_multiple_N60/"
 # target_gamma = "gamma_00055"

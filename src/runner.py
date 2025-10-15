@@ -13,15 +13,7 @@ def add_dependent_parameters(config, LJ_strength=1):
     config["physical"]["r_0"] = 2 * config["physical"]["a"]
     config["physical"]["sigma"] = (2 ** (-1/6)) * config["physical"]["r_0"]
     config["physical"]["epsilon"] = LJ_strength * config["physical"]["KT"]
-    config["physical"]["cutoff"] = 4 * config["physical"]["a"]
-    # Compute velocity (in MD units, i.e. 1e2 m/s )
-    config["simulation"]["VELOCITY"] = config["simulation"]["SHEAR"] * 1e-4 * (config["geometry"]["BOX_Lz"] - config["geometry"]["AGRID"])
-
-def add_dependent_parameters_finer_model(config, LJ_strength=1):
-    config["physical"]["r_0"] = 0.0085 + config["physical"]["a"]
-    config["physical"]["sigma"] = (2 ** (-1/6)) * config["physical"]["r_0"]
-    config["physical"]["epsilon"] = LJ_strength * config["physical"]["KT"]
-    config["physical"]["cutoff"] = 4 * config["physical"]["r_0"]
+    config["physical"]["cutoff"] = 6 * config["physical"]["a"]
     # Compute velocity (in MD units, i.e. 1e2 m/s )
     config["simulation"]["VELOCITY"] = config["simulation"]["SHEAR"] * 1e-4 * (config["geometry"]["BOX_Lz"] - config["geometry"]["AGRID"])
 
@@ -34,7 +26,7 @@ def compute_start_positions(config):
     radius = config["geometry"]["RADIUS_OBJECT"] - agrid / 2
     
     center = np.array([box_lx / 4, box_ly / 2])
-    spacing = 0.3
+    spacing = 6*a 
 
     if config["geometry"]["SPHERE"] or config["geometry"]["CYLINDER"]:
         n_attempts = 10 * n_polymers  # oversample to filter later
@@ -63,7 +55,9 @@ def compute_start_positions(config):
         random_y = np.random.uniform(agrid, box_ly - agrid, n_polymers)
 
     # Place monomers just above the wall
-    z = np.full(n_polymers, 0.5 * agrid + a/2)
+    # z = np.full(n_polymers, 0.5 * agrid + a/2)
+    # place monomers 2a (above the soft sphere potential)
+    z = np.full(n_polymers, 0.5 * agrid + a + 1e-07)
 
     start_positions = np.stack([random_x, random_y, z], axis=1)
     config["simulation"]["START_POSITIONS"] = start_positions
@@ -74,6 +68,7 @@ def add_polymer_positions(config, run_type):
 
     N_POLYMERS = config["simulation"]["N_POLYMERS"]
     N_MONOMERS = config["physical"]["N_MONOMERS"]
+    a = config["physical"]["a"]
     AGRID = config["geometry"]["AGRID"]
     bond_length = 2 * config["physical"]["a"]
     distribution_type = config["simulation"].get("DISTRIBUTION", "UNIFORM")
@@ -119,8 +114,10 @@ def add_polymer_positions(config, run_type):
                 current_pos = current_pos + bond_length * noisy_direction
 
         polymer_positions = np.array(polymer_positions)
-        # ensure constraint of wall in z-direction
-        polymer_positions[:, 2] = np.maximum(polymer_positions[:, 2], 0.5 * AGRID + 0.001)
+        # ensure constraint of wall in z-direction (above soft sphere 2 * a + 1e-07)
+        # polymer_positions[:, 2] = np.maximum(polymer_positions[:, 2], 0.5 * AGRID + 0.001)
+        # (above soft sphere 2 * a + 1e-07)
+        polymer_positions[:, 2] = np.maximum(polymer_positions[:, 2], 0.5 * AGRID + a + 1e-07)
         positions.append(polymer_positions)
 
     config["simulation"]["POSITIONS"] = positions
@@ -146,30 +143,39 @@ if __name__ == "__main__":
     run_type = str(sys.argv[1])
 
     if run_type == "test_gridsizes":
-        shear = float(sys.argv[2])
-        gridsize = float(sys.argv[3])
-        run = int(sys.argv[4])
-        save_dir = str(sys.argv[5])
+        if len(sys.argv) == 7:
+            shear = float(sys.argv[2])
+            gridsize = float(sys.argv[3])
+            run = int(sys.argv[4])
+            k_vwf = float(sys.argv[5])
+            save_dir = str(sys.argv[6])
+            config["simulation"]["SEED"] = run
+            np.random.seed(config["simulation"]["SEED"])
+            config["output"]["DIRECTORY"] = f"./{save_dir}/grid_{int(gridsize*1e2):05d}/shear_{int(shear):05d}/run_{run}/"
 
-        config["simulation"]["SEED"] = run
+        if len(sys.argv) == 6:
+            shear = float(sys.argv[2])
+            gridsize = float(sys.argv[3])
+            k_vwf = float(sys.argv[4])
+            save_dir = str(sys.argv[5])
+            config["output"]["DIRECTORY"] = f"./{save_dir}/grid_{int(gridsize*1e2):05d}/shear_{int(shear):05d}/"
+
         config["simulation"]["SHEAR"] = shear
         config["geometry"]["AGRID"] = gridsize
         config["simulation"]["N_POLYMERS"] = 2
         config["simulation"]["stdev_initial_pos"] = 0.01
         config["simulation"]["TOTAL_TIME"] = 0.1
-        # config["physical"]["k"] = 650
-        # config["physical"]["k"] = 6.5
-        # config["simulation"]["SAVE_VTK"] = True
+        config["physical"]["k"] = k_vwf
+        config["simulation"]["MINIMIZATION_STEPS"] = 0
         
-        # reduce time step for run with gridsize = 0.25 and increase minimization steps
-        # if gridsize==0.25:
-        #     config["simulation"]["TIME_STEP"] = 0.000125/2
+        if gridsize==0.5:
+            config["simulation"]["LB_TIME_STEP"] = 0.001
 
-        np.random.seed(config["simulation"]["SEED"])
+        # config["simulation"]["SAVE_VTK"] = True
 
         add_timeloops_from_gridsize(config)
-        add_dependent_parameters(config, LJ_strength=1)
-        config["output"]["DIRECTORY"] = f"./{save_dir}/grid_{int(gridsize*1e2):05d}/shear_{int(shear):05d}/run_{run}/"
+        add_dependent_parameters(config, LJ_strength=14)
+        # config["output"]["DIRECTORY"] = f"./{save_dir}/grid_{int(gridsize*1e2):05d}/shear_{int(shear):05d}/run_{run}/"
         add_polymer_positions(config, run_type)
 
     if run_type == "validation_uncoiling":
@@ -198,10 +204,10 @@ if __name__ == "__main__":
         # change number of monomers in the polymer
         config["physical"]["N_MONOMERS"] = 50
         config["physical"]["a"] = 0.03
-        config["physical"]["k"] = 1000
-        config["physical"]["d_r_max"] = 2 * config["physical"]["a"]
-        # set total time to 0.2 for multiple runs
-        config["simulation"]["TOTAL_TIME"] = 0.2
+        config["physical"]["k"] = 10
+        # config["physical"]["d_r_max"] = 2 * config["physical"]["a"]
+        # can set total time to 0.2 for multiple runs
+        config["simulation"]["TOTAL_TIME"] = 0.4
         
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
@@ -221,7 +227,8 @@ if __name__ == "__main__":
         # set parameters to match the validation data from Schneider et al.
         config["simulation"]["SHEAR"] = shear
         config["physical"]["GAMMA"] = gamma
-        config["physical"]["N_MONOMERS"] = 150
+        # 15 micrometer polymer
+        config["physical"]["N_MONOMERS"] = 250
         # large box to fit N_monomer=150 polymer
         config["geometry"]["BOX_Lx"] = 64
         config["geometry"]["BOX_Ly"] = 32
@@ -233,9 +240,9 @@ if __name__ == "__main__":
         config["simulation"]["TIME_STEP"] = 0.001
         config["simulation"]["LB_TIME_STEP"] = 0.001
         
-        if shear == 10000:
-            config["simulation"]["TIME_STEP"] = 0.00025
-            config["simulation"]["LB_TIME_STEP"] = 0.00025
+        # if shear == 10000:
+        #     config["simulation"]["TIME_STEP"] = 0.00025
+        #     config["simulation"]["LB_TIME_STEP"] = 0.00025
 
         config["simulation"]["TETHERED"] = False
         config["simulation"]["TOTAL_TIME"] = 0.3
@@ -256,13 +263,21 @@ if __name__ == "__main__":
         add_polymer_positions(config, run_type)
 
     if run_type == "validation_coiling":
-        gamma = float(sys.argv[2])
-        LJ_strength = float(sys.argv[3])
-        run = int(sys.argv[4])
-        save_dir = str(sys.argv[5])
-        
-        # set run id as random seed
-        config["simulation"]["SEED"] = run
+        if len(sys.argv) == 6:
+            gamma = float(sys.argv[2])
+            LJ_strength = float(sys.argv[3])
+            run = int(sys.argv[4])
+            save_dir = str(sys.argv[5])
+            # set run id as random seed
+            config["simulation"]["SEED"] = run
+            config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/run_{run}/"
+
+        if len(sys.argv) == 5:
+            gamma = float(sys.argv[2])
+            LJ_strength = float(sys.argv[3])
+            save_dir = str(sys.argv[4])
+            config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/"
+
         # for recoiling, the experimental data added 60% sucrose, increased viscosity and density
         config["fluid"]["VISC"] = config["fluid"]["VISC"] * 58
         config["fluid"]["DENS"] = 0.00013
@@ -270,68 +285,15 @@ if __name__ == "__main__":
         config["geometry"]["AGRID"] = 1
         config["simulation"]["N_POLYMERS"] = 1
         config["simulation"]["TOTAL_TIME"] = 0.8
-        config["physical"]["k"] = 650
-        config["physical"]["N_MONOMERS"] = 30
+        config["physical"]["k"] = 1000
+        config["physical"]["N_MONOMERS"] = 50
+        config["simulation"]["MINIMIZATION_STEPS"] = 0
 
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
         
-        config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/run_{run}/"
         add_polymer_positions(config, run_type)
     
-    if run_type == "test_initial_setup":
-        run_type = "validation_uncoiling"
-        shear = float(sys.argv[2])
-        gamma = float(sys.argv[3])
-        LJ_strength = float(sys.argv[4])
-        gridsize = float(sys.argv[5])
-        save_dir = str(sys.argv[6])
-
-        config["simulation"]["SAVE_VTK"] = True
-        config["geometry"]["BOX_Lx"] = 64
-        config["geometry"]["BOX_Ly"] = 32
-        config["geometry"]["BOX_Lz"] = 32
-        config["physical"]["N_MONOMERS"] = 150
-        config["simulation"]["SHEAR"] = shear
-        config["physical"]["GAMMA"] = gamma
-        config["simulation"]["N_POLYMERS"] = 1
-        config["geometry"]["AGRID"] = gridsize
-        config["simulation"]["TOTAL_TIME"] = 0.4
-        # needed to decrease of timestep due to large boxsize (i.e. large Ma number for LB for high shear rates)
-        config["simulation"]["TIME_STEP"] = 0.0005
-        config["physical"]["k"] = 650
-        config["simulation"]["MINIMIZATION_STEPS"] = 1000
-        config["simulation"]["TETHERED"] = False
-        add_timeloops_from_gridsize(config)
-        add_dependent_parameters(config, LJ_strength)
-        config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}"
-        add_polymer_positions(config, run_type)
-    
-    
-    if run_type == "fine_model_uncoiling":
-        run_type = "validation_uncoiling"
-        shear = float(sys.argv[2])
-        gamma = float(sys.argv[3])
-        LJ_strength = float(sys.argv[4])
-        save_dir = str(sys.argv[5])
-
-        # finer model for vWF, 5 beads per monomer with a=0.003 mu m 
-        # with tether of 8.5 nm between each bead
-        config["physical"]["a"] = 0.003
-        config["simulation"]["SHEAR"] = shear
-        config["physical"]["GAMMA"] = gamma
-        config["simulation"]["N_POLYMERS"] = 1
-        config["geometry"]["AGRID"] = 1
-        config["physical"]["k"] = 6500
-        config["physical"]["N_MONOMERS"] = 5 * config["physical"]["N_MONOMERS"]
-        config["simulation"]["SAVE_VTK"] = True
-
-        add_timeloops_from_gridsize(config)
-        add_dependent_parameters_finer_model(config, LJ_strength)
-        config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}"
-        add_polymer_positions(config, run_type)
-    
-
     lbf, forces, positions, drag_forces = run_simulation(config,run_type)
 
     save_results(config, lbf, forces, drag_forces, positions)
