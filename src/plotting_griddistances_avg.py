@@ -138,7 +138,7 @@ def plot_grid_results_avg(config, base_dir, plot_mode="mean_std"):
         ax.set_xlim(0,0.1)
         # ax.set_ylim(0.05,0.11)
         if shear_value==1000:
-            ax.legend(fontsize=15, frameon=False)
+            ax.legend(fontsize=13, frameon=False, loc='upper right')
 
     axes[-1].set_xlabel("Time [s]", fontsize=20)
     title_mode = "Mean ± Std" if plot_mode == "mean_std" else "Individual Runs"

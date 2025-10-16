@@ -54,9 +54,8 @@ def compute_start_positions(config):
         random_x = np.random.uniform(agrid, box_lx - agrid, n_polymers)
         random_y = np.random.uniform(agrid, box_ly - agrid, n_polymers)
 
-    # Place monomers just above the wall
-    # z = np.full(n_polymers, 0.5 * agrid + a/2)
-    # place monomers 2a (above the soft sphere potential)
+    # place monomers just above the wall
+    # place monomers a (above the soft sphere potential)
     z = np.full(n_polymers, 0.5 * agrid + a + 1e-07)
 
     start_positions = np.stack([random_x, random_y, z], axis=1)
@@ -175,7 +174,6 @@ if __name__ == "__main__":
 
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength=14)
-        # config["output"]["DIRECTORY"] = f"./{save_dir}/grid_{int(gridsize*1e2):05d}/shear_{int(shear):05d}/run_{run}/"
         add_polymer_positions(config, run_type)
 
     if run_type == "validation_uncoiling":
@@ -205,13 +203,12 @@ if __name__ == "__main__":
         config["physical"]["N_MONOMERS"] = 50
         config["physical"]["a"] = 0.03
         config["physical"]["k"] = 10
-        # config["physical"]["d_r_max"] = 2 * config["physical"]["a"]
-        # can set total time to 0.2 for multiple runs
-        config["simulation"]["TOTAL_TIME"] = 0.4
-        
+        # can set total time to 0.2 for multiple runs / validation uncoiling
+        config["simulation"]["TOTAL_TIME"] = 0.2
+        # config["simulation"]["SAVE_VTK"] = True
+
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
-        # config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}/run_{run}/"
         add_polymer_positions(config, run_type)
 
     if run_type == "validation_uncoiling_free":
@@ -229,7 +226,7 @@ if __name__ == "__main__":
         config["physical"]["GAMMA"] = gamma
         # 15 micrometer polymer
         config["physical"]["N_MONOMERS"] = 250
-        # large box to fit N_monomer=150 polymer
+        # large box to fit N_monomer=250 polymer
         config["geometry"]["BOX_Lx"] = 64
         config["geometry"]["BOX_Ly"] = 32
         config["geometry"]["BOX_Lz"] = 32
@@ -248,9 +245,8 @@ if __name__ == "__main__":
         config["simulation"]["TOTAL_TIME"] = 0.3
         # extra minimization steps needed for the large polymer
         config["simulation"]["MINIMIZATION_STEPS"] = 500
-        # large Fene spring constant because a lot of 
-        # overextension due to big size of polymer
-        config["physical"]["k"] = 650
+        # might need to increase fene bond for large these large free flowing polymers?
+        config["physical"]["k"] = 10
 
         # increased steps in simulation to save the data (to run for vtk)
         # since otherwise the file will be too big
@@ -285,13 +281,14 @@ if __name__ == "__main__":
         config["geometry"]["AGRID"] = 1
         config["simulation"]["N_POLYMERS"] = 1
         config["simulation"]["TOTAL_TIME"] = 0.8
-        config["physical"]["k"] = 1000
-        config["physical"]["N_MONOMERS"] = 50
+        config["physical"]["k"] = 10
+        config["physical"]["N_MONOMERS"] = 100
         config["simulation"]["MINIMIZATION_STEPS"] = 0
+        
+        # config["simulation"]["SAVE_VTK"] = True
 
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
-        
         add_polymer_positions(config, run_type)
     
     lbf, forces, positions, drag_forces = run_simulation(config,run_type)
