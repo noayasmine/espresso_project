@@ -146,7 +146,6 @@ def run_simulation(params,run_type):
     f"gridsize={AGRID}, MD_timestep={TIME_STEP}, LB_timestep={LB_TIME_STEP}, viscosity={VISC}, seed={SEED}, velocity={VELOCITY}, Ma={MA}")
     logging.info(f"FENE parameters: k={k}, r_0={r_0}, dr_max={d_r_max}")
 
-
     vals = lb_units_and_gammas(agrid=AGRID, tau=LB_TIME_STEP, nu_md=VISC)
     for val, v in vals.items():
         logging.info(f"{val}: {v}")

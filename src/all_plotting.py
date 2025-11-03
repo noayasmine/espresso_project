@@ -360,7 +360,9 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
                 t = np.arange(len(y)) * dt
                 shear_int = int(sd.split('_')[1])
 
-                lbl = r"$\dot \gamma$" + f"{shear_int} " + r"$s^{-1}$"
+                #lbl = r"$\dot \gamma=$" + f" {shear_int} " + r"$s^{-1}$"
+                shear_stress_int = int(shear_int * 10 * 0.11)
+                lbl = r"$\tau=$" + f" {shear_stress_int} " + r"dyn cm$^{-1}$"
                 if vtype == "free":
                     lbl += f" ({'end-to-end' if free_metric=='end_to_end' else 'max-pairwise'})"
                 ax.plot(t, y, label=lbl, color=color_cycle[i % 20], lw=1.5)
@@ -560,7 +562,7 @@ def plot_tethered_across_LJ_for_gamma(
     colors = plt.get_cmap("Dark2").colors
     
     dyn_visc_SI = config["physical"]["VISC_dyn"] / 10.0   # -> dyn·s/cm²
-
+    print(N_mono)
     # expected tethered curve
     exp_x = np.array([0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1280], float)
     exp_y = np.array([0.00, 0.35, 0.55, 0.63, 0.70, 0.75, 0.81, 0.85, 0.90, 0.92, 0.94, 0.96, 0.96, 0.96], float)
@@ -641,7 +643,7 @@ def plot_tethered_across_LJ_for_gamma(
                         N = pos.shape[1]
                         Lmax = N * 2.0 * a
                     Efin = tethered_max_extension_last_frame(pos, anchor)
-                    print(f"[DATA] {f} -> extension={Efin:.6f}")
+                    #print(f"[DATA] {f} -> extension={Efin:.6f}")
 
                     run_id = r if r else "run_00000"
                     E_finals.append(Efin)
@@ -665,7 +667,7 @@ def plot_tethered_across_LJ_for_gamma(
                 run_curves[run_id]["Efin"].append(Efin)
                 if run_id in per_run_E0:
                     run_curves[run_id]["E0"] = per_run_E0[run_id]
-
+                    
         if not xs or Lmax is None:
             continue
 
@@ -677,6 +679,7 @@ def plot_tethered_across_LJ_for_gamma(
 
         if aggregate_runs:
             E0_mean = ys_mean[xs == 0][0] if np.any(xs == 0) else ys_mean[0]
+            # print(E0_mean)
             denom = Lmax - E0_mean
             if denom <= 0 or not np.isfinite(denom):
                 print(f"[WARN] Skipping {lj_label_base}")
@@ -700,7 +703,7 @@ def plot_tethered_across_LJ_for_gamma(
                 mse_scaled = sse_scaled / npt
                 rmse_scaled = float(np.sqrt(mse_scaled))
 
-                legend_label = f"{lj_label_base} " + r"($t^{2}_{14}$="+f"{mse_scaled:.3f})"
+                legend_label = r"$\epsilon_{LJ}=$" + f"{lj_label_base} " + r"($t^{2}_{14}$="+f"{mse_scaled:.3f})"
                 if save_errors:
                     error_rows.append(["mean", lj_label_base, lj_label_base, npt,
                                        sse_scaled, mse_scaled, rmse_scaled, float('nan'), float('nan')])
@@ -743,7 +746,7 @@ def plot_tethered_across_LJ_for_gamma(
         ax.fill_between(exp_x, exp_y - exp_s, exp_y + exp_s, color='grey', alpha=0.2, linewidth=0)
     ax.set_ylim(0,1.2)
     ax.set_xlabel(r"Wall shear stress [dyn cm$^{-2}$]", fontsize=15)
-    ax.set_ylabel(r"$\hat{E}^{final}_{tethered}$", fontsize=15)
+    ax.set_ylabel(r"$\hat{E}^{final}_{uncoiling}$", fontsize=15)
     ax.legend(fontsize=9, frameon=False, ncols=1 if aggregate_runs else 2)
     ax.grid(False)
     plt.tight_layout()
@@ -943,17 +946,18 @@ def plot_cumulative_force_across_gammas(
 
     return mse_by_gamma
 
-def plot_recoiling_across_LJ_for_gamma(
+def plot_recoiling_across_LJ_for_gamma_old(
     config,
     root_dir,
     gamma_value,                 # float like 0.0055 or string like "gamma_00055"
+    N_mono,
     time_step=None,
     add_expected=True,           # overlay your expected reference if desired
     aggregate_runs=True,         # if True: mean±std across run_*; if False: plot each run
     show_individual_when_agg=False,  # if True, also show faint individual runs behind the mean
     runs_glob="run_*",           # pattern to discover run folders
-    N_mono=50,
-    extension_metric="x" # NEW: "euclidean" (default) or "x"
+    extension_metric="x", # "euclidean" or along "x"
+    skip=[]
 ):
     """
     Plot recoiling dynamics (tethered metric, normalized to t=0) for ONE gamma across ALL LJ_* folders.
@@ -982,18 +986,24 @@ def plot_recoiling_across_LJ_for_gamma(
           - x        : max | x_i - x_anchor | over monomers i
         Returns shape (T,)
         """
-        # positions: (T, N, D)
+        # positions: (Time, N_mono, D(x,y,z))
         p0 = positions[:, anchor, :]                     # (T, D)
         if metric == "euclidean":
             d = np.linalg.norm(positions - p0[:, None, :], axis=2)  # (T, N)
         elif metric == "x":
             dx = positions[:, :, 0] - p0[:, None, 0]                 # (T, N)
-            #d = np.abs(dx)
+            # d = np.abs(dx)
             d = dx
         else:
             raise ValueError(f"Unknown extension_metric='{metric}'. Use 'euclidean' or 'x'.")
-        return d.max(axis=1)                              # (T,)
+        # print(d.shape)
+        # print(d[:,N_mono-1].shape)
+        # print(d.max(axis=1).shape)
+        #return d[:,N_mono-1] # if we want to return distance to last monomer
 
+        return d.max(axis=1)                  # (T,)
+
+        
     def _gamma_folder_from_value(gv):
         if isinstance(gv, str):
             m = re.match(r"gamma_(\d{5})$", gv)
@@ -1059,8 +1069,14 @@ def plot_recoiling_across_LJ_for_gamma(
                 try:
                     pos = np.load(fpos)["positions"]
                     E = tethered_extension_ts(pos, anchor=0, metric=extension_metric)
+                    # theoretical_R = 0.03 * (N_mono * np.pi / np.sqrt(18) )**(1/3)
+                    # print(theoretical_R)
+                    if N_mono == 50:
+                        theoretical_R = 0.3
+                    if N_mono == 100:
+                        theoretical_R = 0.4
                     if len(E) > 0 and E[0] > 0:
-                        series_list.append(E / E[0])
+                        series_list.append((E - theoretical_R) / (E[0]- theoretical_R))
                     else:
                         print(f"[skip] Bad initial extension in {fpos}")
                 except Exception as e:
@@ -1077,8 +1093,12 @@ def plot_recoiling_across_LJ_for_gamma(
 
         # Label: LJ_00300 -> 3.00 kT × 4
         mlj = re.search(r"LJ_(\d{5})", lj)
-        lj_text = f"{int(int(mlj.group(1))/1e2)} kT" if mlj else lj
+        
+        if int(int(mlj.group(1))/1e2) in skip:
+            continue
 
+        lj_text = f"{int(int(mlj.group(1))/1e2)} kT" if mlj else lj
+        
         color = color_cycle[nplotted % len(color_cycle)]
 
         if aggregate_runs and Y.shape[0] > 1:
@@ -1119,7 +1139,7 @@ def plot_recoiling_across_LJ_for_gamma(
     ax.set_ylim(0,1)
     ax.set_xlim(0,0.8)
     ax.set_xlabel("Time [s]", fontsize=15)
-    ax.set_ylabel(r"$\hat{E}_{rec}$", fontsize=15)
+    ax.set_ylabel(r"$\hat{E}_{recoiling}$", fontsize=15)
     title = (r"Recoiling dynamics, normalized $E(t)/E(0)$" +
              f"\n" + r"$\gamma$" + f" = {gamma_val:.4f}")
     ax.legend(fontsize=9)
@@ -1131,6 +1151,257 @@ def plot_recoiling_across_LJ_for_gamma(
     plt.savefig(out, dpi=300, bbox_inches='tight')
     plt.close(fig)
     print(f"Saved {out}")
+
+def plot_recoiling_across_LJ_for_gamma(
+    config,
+    root_dir,
+    gamma_value,                 # float like 0.0055 or string like "gamma_00055"
+    N_mono,
+    time_step=None,
+    add_expected=True,           # overlay expected reference if desired
+    aggregate_runs=True,         # if True: mean±std across run_*; if False: plot each run
+    show_individual_when_agg=False,  # if True, also show faint individual runs behind the mean
+    runs_glob="run_*",           # pattern to discover run folders
+    extension_metric="x",        # "euclidean" or "x"
+    skip=[]
+):
+    """
+    Plot recoiling dynamics (tethered metric, normalized to t=0) for ONE gamma across ALL LJ_* folders.
+    Computes reduced chi-squared (χ²/N) vs an expected curve by interpolating simulation to the reference x-points.
+    The per-point denominator uses combined uncertainty: (sigma_exp + sigma_sim)^2, where sigma_sim is
+    the std across runs (interpolated to the expected x).
+    """
+    import os, re, glob
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    plt.style.use("seaborn-v0_8-whitegrid")
+
+    # --- helpers ---
+    def tethered_extension_ts(positions, metric, anchor=0):
+        """
+        Per-frame 'tethered' extension relative to anchor:
+          - euclidean: max || r_i - r_anchor || over monomers i
+          - x        : max | x_i - x_anchor | over monomers i
+        Returns shape (T,)
+        """
+        p0 = positions[:, anchor, :]  # (T, D)
+        if metric == "euclidean":
+            d = np.linalg.norm(positions - p0[:, None, :], axis=2)  # (T, N)
+        elif metric == "x":
+            dx = positions[:, :, 0] - p0[:, None, 0]                # (T, N)
+            d = dx  # use np.abs(dx) if you want absolute separation
+        else:
+            raise ValueError(f"Unknown extension_metric='{metric}'. Use 'euclidean' or 'x'.")
+        return d.max(axis=1)  # (T,)
+
+    def _gamma_folder_from_value(gv):
+        if isinstance(gv, str):
+            m = re.match(r"gamma_(\d{5})$", gv)
+            if m:
+                return gv, int(m.group(1)) / 1e4
+            gv_float = float(gv)
+        else:
+            gv_float = float(gv)
+        code = f"{int(round(gv_float * 1e4)):05d}"
+        return f"gamma_{code}", gv_float
+
+    # --- reduced chi-squared (χ²/N) with combined error (σ_exp + σ_sim) ---
+    def curve_chi2_reduced_with_simerr(t_dense, y_mean, y_std, x_ref, y_ref, err_ref):
+        """
+        Interpolate y_mean and y_std at x_ref (within sim coverage),
+        then compute reduced chi² using σ_total = σ_exp + σ_sim:
+            chi2_red = (1/N) * sum_i [ ((y_i - y_ref_i) / (σ_exp_i + σ_sim_i))^2 ].
+        """
+        if (t_dense is None) or (len(t_dense) == 0) or (x_ref is None) or (err_ref is None):
+            return np.inf, 0
+        mask = (x_ref >= t_dense[0]) & (x_ref <= t_dense[-1])
+        N = int(mask.sum())
+        if N == 0:
+            return np.inf, 0
+
+        y_interp = np.interp(x_ref[mask], t_dense, y_mean)
+        ystd_interp = np.interp(x_ref[mask], t_dense, y_std)
+        sigma_total = np.maximum(err_ref[mask] + ystd_interp, 1e-12)  # avoid divide-by-zero
+        chi2 = np.sum(((y_interp - y_ref[mask]) / sigma_total) ** 2)
+        chi2_red = chi2 / N
+        return float(chi2_red), N
+
+    # --- time step setup ---
+    TIMESTEP = config["simulation"]["TIME_STEP"]
+    STEPS    = config["simulation"]["STEPS"]
+    if time_step is not None:
+        TIMESTEP = time_step
+    dt = 1e-4 * TIMESTEP * STEPS
+
+    # colors
+    cmap = plt.get_cmap("Dark2")
+    color_cycle = list(cmap.colors)
+
+    gamma_folder, gamma_val = _gamma_folder_from_value(gamma_value)
+
+    # collect LJ_* folders
+    lj_dirs = [d for d in os.listdir(root_dir)
+               if os.path.isdir(os.path.join(root_dir, d)) and re.match(r"LJ_\d{5}$", d)]
+    lj_dirs.sort(key=lambda d: int(re.search(r"LJ_(\d{5})", d).group(1)))
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    nplotted = 0
+
+    # expected/reference curve + errors (plotting AND metrics)
+    if N_mono == 50:
+        expected_x = np.array([0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8])
+        expected_y = np.array([1, 0.4, 0.15, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
+        expected_err = np.array([0.1, 0.3, 0.2, 0.2, 0.15, 0.15, 0.15, 0.15, 0.15])
+    elif N_mono == 100:
+        expected_x = np.array([0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8])
+        expected_y = np.array([1, 0.55, 0.25, 0.15, 0.1, 0.1, 0.1, 0.1, 0.1])
+        expected_err = np.array([0.1, 0.15, 0.15, 0.15, 0.15, 0.1, 0.1, 0.1, 0.1])
+    else:
+        expected_x = expected_y = expected_err = None
+
+    # store reduced chi2 per LJ
+    chi2_by_lj = {}
+
+    for i, lj in enumerate(lj_dirs):
+        lj_path = os.path.join(root_dir, lj)
+        gamma_path = os.path.join(lj_path, gamma_folder)
+
+        # Case A: single positions.npz directly in gamma folder
+        single_positions = os.path.join(gamma_path, "positions.npz")
+
+        # Case B: multiple runs inside gamma folder
+        run_positions = sorted(glob.glob(os.path.join(gamma_path, runs_glob, "positions.npz")))
+
+        series_list = []  # list of y(t) arrays for this LJ
+
+        if os.path.isfile(single_positions):
+            try:
+                pos = np.load(single_positions)["positions"]     # (T,N,D)
+                E = tethered_extension_ts(pos, anchor=0, metric=extension_metric)
+                if len(E) > 0 and E[0] > 0:
+                    series_list.append(E / E[0])
+                else:
+                    print(f"[skip] Bad initial extension in {single_positions}")
+            except Exception as e:
+                print(f"[skip] Error reading {single_positions}: {e}")
+
+        if run_positions:
+            for fpos in run_positions:
+                try:
+                    pos = np.load(fpos)["positions"]
+                    E = tethered_extension_ts(pos, anchor=0, metric=extension_metric)
+                    # normalization using a theoretical resting extension (if desired)
+                    if N_mono == 50:
+                        theoretical_R = 0.3
+                    if N_mono == 100:
+                        theoretical_R = 0.4
+                    if len(E) > 0 and E[0] > 0:
+                        series_list.append((E - theoretical_R) / (E[0] - theoretical_R))
+                    else:
+                        print(f"[skip] Bad initial extension in {fpos}")
+                except Exception as e:
+                    print(f"[skip] Error reading {fpos}: {e}")
+
+        if not series_list:
+            print(f"[skip] No usable positions for {lj}/{gamma_folder}")
+            continue
+
+        # align runs by truncating to min length
+        min_len = min(len(s) for s in series_list)
+        Y = np.stack([s[:min_len] for s in series_list], axis=0)   # (R,T)
+        t = np.arange(min_len) * dt
+        print(len(t))
+        # label base & skip logic
+        mlj = re.search(r"LJ_(\d{5})", lj)
+        if int(int(mlj.group(1))/1e2) in skip:
+            continue
+        lj_base = f"{int(int(mlj.group(1))/1e2)}" if mlj else lj  # numeric LJ in kT for the label
+        color = color_cycle[nplotted % len(color_cycle)]
+
+        # --- plotting and chi² computation, with label including χ² ---
+        if aggregate_runs and Y.shape[0] > 1:
+            y_mean = Y.mean(axis=0)
+            y_std  = Y.std(axis=0, ddof=1)
+            if show_individual_when_agg:
+                for r in range(Y.shape[0]):
+                    ax.plot(t, Y[r], lw=0.8, alpha=0.25, color=color)
+
+            if expected_x is not None:
+                chi2_red, n_used = curve_chi2_reduced_with_simerr(
+                    t, y_mean, y_std, expected_x, expected_y, expected_err
+                )
+                chi2_by_lj[lj_base] = (chi2_red, n_used)
+                lj_text = fr"$\epsilon_{{\mathrm{{LJ}}}} = {lj_base}\,\mathrm{{kT}}, t^2_{{\mathrm{{8000}}}} = {chi2_red:.3f}$"
+            else:
+                lj_text = fr"$\epsilon_{{\mathrm{{LJ}}}} = {lj_base}\,\mathrm{{kT}}$"
+
+            ax.plot(t, y_mean, lw=1.8, color=color, label=lj_text)
+            ax.fill_between(t, y_mean - y_std, y_mean + y_std, alpha=0.2, color=color)
+
+        else:
+            # per-run plotting; average reduced chi2 across runs (simple mean)
+            chi2_accum = 0.0
+            n_counted = 0
+            for r in range(Y.shape[0]):
+                ax.plot(t, Y[r], lw=1.2, color=color, alpha=0.9 if Y.shape[0]==1 else 0.8,
+                        label=None if Y.shape[0] > 1 else fr"$\epsilon_{{\mathrm{{LJ}}}} = {lj_base}\,\mathrm{{kT}}$")
+
+                if expected_x is not None:
+                    # no std available per single trace → 0
+                    chi2_r, n_used = curve_chi2_reduced_with_simerr(
+                        t, Y[r], np.zeros_like(Y[r]), expected_x, expected_y, expected_err
+                    )
+                    if np.isfinite(chi2_r):
+                        chi2_accum += chi2_r
+                        n_counted += 1
+
+            if expected_x is not None and n_counted > 0:
+                chi2_red = chi2_accum / n_counted
+                chi2_by_lj[lj_base] = (chi2_red, n_used)
+                lj_text = fr"$\epsilon_{{\mathrm{{LJ}}}} = {lj_base}\,\mathrm{{kT}},\ \chi^2_{{\mathrm{{red}}}} = {chi2_red:.3f}$"
+                # add a representative line to the legend (use the mean across runs just for legend clarity)
+                ax.plot([], [], lw=1.8, color=color, label=lj_text)  # invisible handle for legend
+            elif expected_x is None:
+                lj_text = fr"$\epsilon_{{\mathrm{{LJ}}}} = {lj_base}\,\mathrm{{kT}}$"
+                ax.plot([], [], lw=1.8, color=color, label=lj_text)
+
+        nplotted += 1
+
+    if nplotted == 0:
+        print("No recoiling data found for the requested gamma across LJ folders.")
+        plt.close(fig)
+        return {}
+
+    # optional expected reference (for plot only)
+    if add_expected and (expected_x is not None):
+        ax.plot(expected_x, expected_y, '--', lw=1.2, color='grey', label=r"Fu et al.")
+        ax.fill_between(expected_x, expected_y - expected_err, expected_y + expected_err, alpha=0.25, color="grey")
+
+    ax.set_ylim(0, 1)
+    ax.set_xlim(0, 0.8)
+    ax.set_xlabel("Time [s]", fontsize=15)
+    ax.set_ylabel(r"$\hat{E}_{\mathrm{recoiling}}$", fontsize=15)
+    ax.legend(fontsize=9)
+    ax.grid(False)
+    plt.tight_layout()
+
+    out = os.path.join(root_dir, f"recoiling_all_LJ_gamma_{gamma_folder.split('_')[1]}.png")
+    plt.savefig(out, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    print(f"Saved {out}")
+
+    # pretty-print and return metrics, sorted best-to-worst
+    if chi2_by_lj:
+        items = sorted(chi2_by_lj.items(), key=lambda kv: kv[1][0])
+        print("\nReduced χ² (σ_total = σ_exp + σ_sim):")
+        for lj_base, (chi2_red, n_used) in items:
+            print(f"  {lj_base:>6} kT: χ²/N = {chi2_red:.5f}  (N_ref_used={n_used})")
+        return {k: v[0] for k, v in items}
+    else:
+        print("No χ² computed (no expected curve or no overlap).")
+        return {}
+
 
 def plot_free_across_LJ_for_gamma(
     config,

@@ -177,20 +177,29 @@ if __name__ == "__main__":
         add_polymer_positions(config, run_type)
 
     if run_type == "validation_uncoiling":
-        if len(sys.argv) == 7:
+        if len(sys.argv) == 8:
             shear = float(sys.argv[2])
             gamma = float(sys.argv[3])
             LJ_strength = float(sys.argv[4])
-            run = int(sys.argv[5])
-            save_dir = str(sys.argv[6])
+            N_monomers = int(sys.argv[5])
+            config["physical"]["N_MONOMERS"] = N_monomers
+            run = int(sys.argv[6])
+            save_dir = str(sys.argv[7])
+            config["simulation"]["TOTAL_TIME"] = 0.2
             # set rud_id as seed
             config["simulation"]["SEED"] = run
             config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}/run_{run}/"
+
         if len(sys.argv) == 6:
             shear = float(sys.argv[2])
             gamma = float(sys.argv[3])
             LJ_strength = float(sys.argv[4])
             save_dir = str(sys.argv[5])
+            config["physical"]["N_MONOMERS"] = 50
+            #config["simulation"]["SAVE_VTK"] = True
+            config["simulation"]["SEED"] = 15
+            config["simulation"]["TOTAL_TIME"] = 0.4
+
             config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}/"
         
         # config["simulation"]["SAVE_VTK"] = True
@@ -200,12 +209,20 @@ if __name__ == "__main__":
         config["simulation"]["N_POLYMERS"] = 1
         config["geometry"]["AGRID"] = 1
         # change number of monomers in the polymer
-        config["physical"]["N_MONOMERS"] = 50
+        
         config["physical"]["a"] = 0.03
-        config["physical"]["k"] = 10
+        config["physical"]["k"] = 1
         # can set total time to 0.2 for multiple runs / validation uncoiling
-        config["simulation"]["TOTAL_TIME"] = 0.2
+        #config["simulation"]["TOTAL_TIME"] = 0.2
         # config["simulation"]["SAVE_VTK"] = True
+
+        if config["physical"]["N_MONOMERS"] == 100:
+            config["simulation"]["MINIMIZATION_STEPS"] = 600
+            config["simulation"]["TIME_STEP"] = 0.001
+            config["simulation"]["LB_TIME_STEP"] = 0.001
+
+        if config["physical"]["N_MONOMERS"] == 50:
+            config["simulation"]["MINIMIZATION_STEPS"] = 200
 
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
@@ -268,10 +285,13 @@ if __name__ == "__main__":
             config["simulation"]["SEED"] = run
             config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/run_{run}/"
 
-        if len(sys.argv) == 5:
+        if len(sys.argv) == 7:
             gamma = float(sys.argv[2])
             LJ_strength = float(sys.argv[3])
-            save_dir = str(sys.argv[4])
+            stdev_init = float(sys.argv[4])
+            N_mono = float(sys.argv[5])
+            save_dir = str(sys.argv[6])
+            config["simulation"]["stdev_initial_pos"] = stdev_init
             config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/"
 
         # for recoiling, the experimental data added 60% sucrose, increased viscosity and density
