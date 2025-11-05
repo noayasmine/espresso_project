@@ -98,7 +98,7 @@ plot_tethered_across_LJ_for_gamma(
 )
 
 base_dir = "/gpfs/home4/nroebersen/espresso_project/validation_data/N50/validation_coil_k10/"
-plot_recoiling_across_LJ_for_gamma(config, base_dir, gamma_value=0.018, time_step=None, add_expected=True, N_mono=50, extension_metric="x") #, skip=[24, 22, 20, 18, 16, 12, 10, 8])
+plot_recoiling_across_LJ_for_gamma(config, base_dir, gamma_value=0.018, time_step=None, add_expected=True, N_mono=50, extension_metric="x") skip=[24, 22, 20, 18, 16, 12, 10, 8])
 
 base_dir = "/gpfs/home4/nroebersen/espresso_project/validation_data/N100/validation_uncoil_k10/"
 target_gamma = "gamma_00180"
