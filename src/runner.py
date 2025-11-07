@@ -70,8 +70,9 @@ def add_polymer_positions(config, run_type):
     a = config["physical"]["a"]
     AGRID = config["geometry"]["AGRID"]
     bond_length = 2 * config["physical"]["a"]
+
     distribution_type = config["simulation"].get("DISTRIBUTION", "UNIFORM")
-    min_monomers = config["simulation"].get("MIN_MONOMERS", 25)
+    min_monomers = config["simulation"].get("MIN_MONOMERS", 50)
     std_dev = config["simulation"].get("STD_MONOMERS", 10)
 
     std_dev_monomer_direction = config["simulation"]["stdev_initial_pos"]
@@ -261,15 +262,16 @@ if __name__ == "__main__":
         config["simulation"]["TETHERED"] = False
         config["simulation"]["TOTAL_TIME"] = 0.3
         # extra minimization steps needed for the large polymer
-        config["simulation"]["MINIMIZATION_STEPS"] = 600
+        config["simulation"]["MINIMIZATION_STEPS"] = 400
         # might need to increase fene bond for large these large free flowing polymers?
         # config["physical"]["k"] = 10
+        config["physical"]["k"] = 100
 
         # increased steps in simulation to save the data (to run for vtk)
         # since otherwise the file will be too big
         config["simulation"]["SAVE_VTK"] = False
         config["simulation"]["STEPS"] = 10000
-
+        
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
         config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}/run_{run}"
@@ -311,6 +313,35 @@ if __name__ == "__main__":
         add_dependent_parameters(config, LJ_strength)
         add_polymer_positions(config, run_type)
     
+    if run_type == "experiment":
+        shear = float(sys.argv[2])
+        save_dir = str(sys.argv[3])
+
+        config["output"]["DIRECTORY"] = f"./{save_dir}/"
+    
+        config["simulation"]["SAVE_VTK"] = True
+        config["simulation"]["SHEAR"] = shear
+        config["simulation"]["TOTAL_TIME"] = 0.1
+        initialize="coiled"
+        LJ_strength=18
+
+        config["geometry"]["BOX_Lx"] = 20
+        config["geometry"]["BOX_Ly"] = 8
+        config["geometry"]["BOX_Lz"] = 8
+        config["geometry"]["SPHERE"] = True
+
+        if config["physical"]["N_MONOMERS"] == 100:
+            config["simulation"]["MINIMIZATION_STEPS"] = 600
+            config["simulation"]["TIME_STEP"] = 0.001
+            config["simulation"]["LB_TIME_STEP"] = 0.001
+
+        if config["physical"]["N_MONOMERS"] == 50:
+            config["simulation"]["MINIMIZATION_STEPS"] = 200
+
+        add_timeloops_from_gridsize(config)
+        add_dependent_parameters(config, LJ_strength)
+        add_polymer_positions(config, run_type)
+
     lbf, forces, positions, drag_forces = run_simulation(config,run_type)
 
     save_results(config, lbf, forces, drag_forces, positions)

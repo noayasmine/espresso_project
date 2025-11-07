@@ -74,7 +74,7 @@ def lb_drag_forces(system, lb, gamma, ids):
 
 def build_polymers(system, run_type, n_monomers, n_polymers, start_positions, positions, fene, bond_length, SEED, TETHERED=True):
 
-    if run_type=="validation_uncoiling":
+    if run_type=="validation_uncoiling" or run_type=="experiment":
         logging.info("Building coiled up linear polymer (validation uncoiling).")
         positions = espressomd.polymer.linear_polymer_positions(n_polymers=n_polymers, 
             beads_per_chain=n_monomers, start_positions=start_positions, respect_constraints=True,
@@ -199,42 +199,27 @@ def run_simulation(params,run_type):
     system.auto_update_accumulators.add(accumulator_positions)
 
     # Minimization and integrator
-    # what value for gamma is suited here?
-    # system.integrator.set_steepest_descent(f_max=0, gamma=GAMMA, max_displacement=0.001 * sigma)
-    system.integrator.set_steepest_descent(f_max=0, gamma=0.001, max_displacement=0.0001 * sigma)
+    if TETHERED==True:
+        system.integrator.set_steepest_descent(f_max=0, gamma=0.001, max_displacement=0.0001 * sigma)
+    if TETHERED==False:
+        system.integrator.set_steepest_descent(f_max=0, gamma=0.001, max_displacement=0.0001 * sigma)
 
-    if run_type=="validation_uncoiling":
-        logging.info("Energy minimization.")
+    logging.info(f"Energy minimization: {minimization_steps} steps")
 
-        if save_VTK:
-            for i in range(minimization_steps):
-                print(f"step {i + 1} of {minimization_steps}", end='\r', flush=True)
-                system.part.writevtk(outdir + f"particles_prep{i:05d}.vtk")
-                system.integrator.run(STEPS)
+    if save_VTK:
+        for i in range(minimization_steps):
+            print(f"step {i + 1} of {minimization_steps}", end='\r', flush=True)
+            system.part.writevtk(outdir + f"particles_prep{i:05d}.vtk")
+            system.integrator.run(STEPS)
 
-        if not save_VTK:
-            for i in range(minimization_steps):
-                print(f"step {i + 1} of {minimization_steps}", end='\r', flush=True)
-                system.integrator.run(STEPS)
-
-    if run_type=="validation_coiling" or run_type=="test_gridsizes":
-        logging.info("Energy minimization.")
-
-        if save_VTK:
-            for i in range(minimization_steps):
-                print(f"step {i + 1} of {minimization_steps}", end='\r', flush=True)
-                system.part.writevtk(outdir + f"particles_prep{i:05d}.vtk")
-                system.integrator.run(STEPS)
-
-        if not save_VTK:
-            for i in range(minimization_steps):
-                print(f"step {i + 1} of {minimization_steps}", end='\r', flush=True)
-                system.integrator.run(STEPS)
+    if not save_VTK:
+        for i in range(minimization_steps):
+            print(f"step {i + 1} of {minimization_steps}", end='\r', flush=True)
+            system.integrator.run(STEPS)
 
     system.integrator.set_vv()
 
     # LB Fluid setup
-    # lbf = espressomd.lb.LBFluid(kT=0, seed=42, agrid=AGRID, dens=DENS, visc=VISC, tau=TIME_STEP)
 
     lbf = espressomd.lb.LBFluid(kT=0, seed=42, agrid=AGRID, dens=DENS, visc=VISC, tau=LB_TIME_STEP)
     system.actors.add(lbf)
@@ -252,38 +237,16 @@ def run_simulation(params,run_type):
         logging.info(f"LB setup for uncoiling validation (nonzero fluid velocity)")
         lb_boundary_up = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_up_lb, velocity=[0, 0, 0]))
         lb_boundary_down = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_down_lb, velocity=[VELOCITY, 0, 0]))
-        
-
-    # Observables
-    # particle_ids = [p.id for p in system.part.select(type=0)]
-    # forces = espressomd.observables.ParticleForces(ids=particle_ids)
-    # part_pos = espressomd.observables.ParticlePositions(ids=particle_ids)
-    # accumulator_forces = espressomd.accumulators.TimeSeries(obs=forces, delta_N=STEPS)
-    # accumulator_positions = espressomd.accumulators.TimeSeries(obs=part_pos, delta_N=STEPS)
-    # system.auto_update_accumulators.add(accumulator_forces)
-    # system.auto_update_accumulators.add(accumulator_positions)
-
-    # for i in range(500):
-    #     print(f"step {i + 1} of {500}", end='\r', flush=True)
-    #     lbf.write_vtk_velocity(outdir + f"velocity_prep{i:05d}.vtk")
-    #     lbf.write_vtk_boundary(outdir + f"boundary_prep{i:05d}.vtk")
-    #     system.part.writevtk(outdir + f"particles_prep{i:05d}.vtk")
-    #     system.integrator.run(STEPS)
-
-    # system.lbboundaries.remove(lb_boundary_up)
-    # system.lbboundaries.remove(lb_boundary_down)
-
-    # wall_shape_z_up_lb_vel = espressomd.shapes.Wall(normal=[0, 0, 1], dist=AGRID)
-    # wall_shape_z_down_lb_vel = espressomd.shapes.Wall(normal=[0, 0, -1], dist=-(BOX_Lz - AGRID))
-
-    # system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_up_lb_vel, velocity=[0, 0, 0]))
-    # system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_down_lb_vel, velocity=[0, 0, 0]))
-    # Example with your values:
+    
+    if run_type=="experiment":
+        logging.info(f"LB setup for uncoiling validation (nonzero fluid velocity)")
+        lb_boundary_up = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_up_lb, velocity=[0, 0, 0]))
+        lb_boundary_down = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_down_lb, velocity=[VELOCITY, 0, 0]))
 
     # Main simulation loop
     logging.info("Run simulation.")
     start_time = time.time()
-    WINDOW_FRAMES = 10
+
     forces_traj = np.empty((int(LOOPS), int(N_POLYMERS * N_MONOMERS), 3), dtype=np.float32)
 
     if save_VTK:
@@ -298,8 +261,6 @@ def run_simulation(params,run_type):
         for i in range(int(LOOPS)):
             print(f"step {i + 1} of {int(LOOPS)}", end='\r', flush=True)
             system.integrator.run(STEPS)
-            #forces_all = accumulator_forces.time_series()
-            #F_avg = np.mean(forces_all[-WINDOW_FRAMES*STEPS:], axis=0)
 
             forces_traj[i] = lb_drag_forces(system, lbf, GAMMA, particle_ids)
 
