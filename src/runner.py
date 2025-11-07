@@ -211,9 +211,9 @@ if __name__ == "__main__":
         # change number of monomers in the polymer
         
         config["physical"]["a"] = 0.03
-        config["physical"]["k"] = 1
+        # config["physical"]["k"] = 10
         # can set total time to 0.2 for multiple runs / validation uncoiling
-        #config["simulation"]["TOTAL_TIME"] = 0.2
+        # config["simulation"]["TOTAL_TIME"] = 0.2
         # config["simulation"]["SAVE_VTK"] = True
 
         if config["physical"]["N_MONOMERS"] == 100:
@@ -251,19 +251,19 @@ if __name__ == "__main__":
         config["geometry"]["AGRID"] = 1
         # need to decrease timestep due to large boxsize 
         # (i.e. large Ma number for LB for high shear rates)
-        config["simulation"]["TIME_STEP"] = 0.001
-        config["simulation"]["LB_TIME_STEP"] = 0.001
+        config["simulation"]["TIME_STEP"] = 0.0005
+        config["simulation"]["LB_TIME_STEP"] = 0.0005
         
-        # if shear == 10000:
-        #     config["simulation"]["TIME_STEP"] = 0.00025
-        #     config["simulation"]["LB_TIME_STEP"] = 0.00025
+        if shear == 10000:
+            config["simulation"]["TIME_STEP"] = 0.00025
+            config["simulation"]["LB_TIME_STEP"] = 0.00025
 
         config["simulation"]["TETHERED"] = False
         config["simulation"]["TOTAL_TIME"] = 0.3
         # extra minimization steps needed for the large polymer
-        config["simulation"]["MINIMIZATION_STEPS"] = 500
+        config["simulation"]["MINIMIZATION_STEPS"] = 600
         # might need to increase fene bond for large these large free flowing polymers?
-        config["physical"]["k"] = 10
+        # config["physical"]["k"] = 10
 
         # increased steps in simulation to save the data (to run for vtk)
         # since otherwise the file will be too big
