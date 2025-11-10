@@ -242,7 +242,7 @@ def plot_validation_results(config, base_dir, validation_type="free",
 
 # ---------- Time series (dynamic N + optional Box_Lx override + free_metric) ----------
 def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=1,
-                     validation_type="free", Box_Lx=None, free_metric="end_to_end", time_step=None, k_fene=6.5, 
+                     validation_type="free", Box_Lx=None, free_metric="end_to_end", time_step=None, k_fene=10, 
                      monomer_index=None, fine_model=False, a=0.03):
     """
     plot_type = 'extension' (normalized extension over time),
@@ -372,8 +372,8 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
         # ax.set_title(r"$k_{FENE}$=" + f"{k_fene}" + "mN/m", fontsize=16)
         ax.set_xlabel("Time [s]", fontsize=15); ax.set_ylabel(r"$\hat{E}_{teth}$", fontsize=15)
         # ax.set_ylim(-0.05,1.15)
-        ax.set_ylim(-0.05,2.8)
-        ax.set_xlim(0,0.4)
+        #ax.set_ylim(-0.05,2.8)
+        #ax.set_xlim(0,0.4)
         ax.axhline(y=1, color='k', linestyle='--')
         if ax.has_data(): ax.legend(frameon=True, fontsize=10, ncol=2)
         ax.grid(False); plt.tight_layout()
@@ -444,8 +444,8 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
             ax.set_ylabel(f"Drag force [pN]", fontsize=15)
             # ax.set_title(f"Force vs time (monomer {monomer_index})\n{subtitle}", fontsize=14)
             # if ax.has_data(): ax.legend(frameon=False, fontsize=10, ncol=2)
-            # ax.set_xlim(0.14,0.2)
-            # ax.set_ylim(0.45,0.52)
+            ax.set_xlim(0.15,0.4)
+            ax.set_ylim(0.50,0.53)
             # ax.set_xlim(0.3,0.4)
             ax.grid(False); plt.tight_layout()
             out = os.path.join(base_dir, f"force_monomer_{monomer_index}_vs_time.png")

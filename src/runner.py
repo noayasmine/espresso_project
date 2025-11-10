@@ -62,7 +62,7 @@ def compute_start_positions(config):
     config["simulation"]["START_POSITIONS"] = start_positions
     return start_positions
 
-def add_polymer_positions(config, run_type):
+def add_polymer_positions(config):
     start_positions = compute_start_positions(config)
 
     N_POLYMERS = config["simulation"]["N_POLYMERS"]
@@ -160,6 +160,7 @@ if __name__ == "__main__":
             save_dir = str(sys.argv[5])
             config["output"]["DIRECTORY"] = f"./{save_dir}/grid_{int(gridsize*1e2):05d}/shear_{int(shear):05d}/"
 
+        config["simulation"]["COILED"] = False
         config["simulation"]["SHEAR"] = shear
         config["geometry"]["AGRID"] = gridsize
         config["simulation"]["N_POLYMERS"] = 2
@@ -175,7 +176,7 @@ if __name__ == "__main__":
 
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength=14)
-        add_polymer_positions(config, run_type)
+        add_polymer_positions(config)
 
     if run_type == "validation_uncoiling":
         if len(sys.argv) == 8:
@@ -227,10 +228,9 @@ if __name__ == "__main__":
 
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
-        add_polymer_positions(config, run_type)
+        add_polymer_positions(config)
 
     if run_type == "validation_uncoiling_free":
-        run_type = "validation_uncoiling"
         shear = float(sys.argv[2])
         gamma = float(sys.argv[3])
         LJ_strength = float(sys.argv[4])
@@ -275,7 +275,7 @@ if __name__ == "__main__":
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
         config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}/run_{run}"
-        add_polymer_positions(config, run_type)
+        add_polymer_positions(config)
 
     if run_type == "validation_coiling":
         if len(sys.argv) == 6:
@@ -296,6 +296,8 @@ if __name__ == "__main__":
             config["simulation"]["stdev_initial_pos"] = stdev_init
             config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/"
 
+        config["simulation"]["COUETTE"] = False
+        config["simulation"]["COILED"] = False
         # for recoiling, the experimental data added 60% sucrose, increased viscosity and density
         config["fluid"]["VISC"] = config["fluid"]["VISC"] * 58
         config["fluid"]["DENS"] = 0.00013
@@ -311,7 +313,7 @@ if __name__ == "__main__":
 
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
-        add_polymer_positions(config, run_type)
+        add_polymer_positions(config)
     
     if run_type == "experiment":
         shear = float(sys.argv[2])
@@ -319,29 +321,30 @@ if __name__ == "__main__":
 
         config["output"]["DIRECTORY"] = f"./{save_dir}/"
     
-        config["simulation"]["SAVE_VTK"] = True
+        config["simulation"]["SAVE_VTK"] = False
         config["simulation"]["SHEAR"] = shear
         config["simulation"]["TOTAL_TIME"] = 0.1
         initialize="coiled"
         LJ_strength=18
 
-        config["geometry"]["BOX_Lx"] = 20
+        config["physical"]["N_POLYMERS"] = 20
+        config["geometry"]["BOX_Lx"] = 14
         config["geometry"]["BOX_Ly"] = 8
-        config["geometry"]["BOX_Lz"] = 8
-        config["geometry"]["SPHERE"] = True
+        config["geometry"]["BOX_Lz"] = 4
+        # config["geometry"]["SPHERE"] = True
 
-        if config["physical"]["N_MONOMERS"] == 100:
+        if config["physical"]["N_MONOMERS"] > 50:
             config["simulation"]["MINIMIZATION_STEPS"] = 600
             config["simulation"]["TIME_STEP"] = 0.001
             config["simulation"]["LB_TIME_STEP"] = 0.001
 
-        if config["physical"]["N_MONOMERS"] == 50:
+        if config["physical"]["N_MONOMERS"] <= 50:
             config["simulation"]["MINIMIZATION_STEPS"] = 200
 
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
-        add_polymer_positions(config, run_type)
+        add_polymer_positions(config)
 
-    lbf, forces, positions, drag_forces = run_simulation(config,run_type)
+    lbf, forces, positions, drag_forces = run_simulation(config)
 
     save_results(config, lbf, forces, drag_forces, positions)

@@ -71,21 +71,97 @@ def lb_drag_forces(system, lb, gamma, ids):
     # F_drag
     return -gamma * (vel - u)
 
+def compute_tensile_forces(forces_per_particle, N_POLYMERS, N_MONOMERS):
+    """
+    forces_per_particle: (N_POLYMERS*N_MONOMERS, 3) drag forces per monomer
+    
+    returns: (N_POLYMERS*N_MONOMERS, 3) tensile forces per monomer
+    """
+    # reshape to (polymers, monomers, xyz)
+    F = forces_per_particle.reshape(int(N_POLYMERS), int(N_MONOMERS), 3)
+    # reverse along monomer axis, cumsum, then flip back -> reverse-cumsum
+    tensile = np.flip(np.cumsum(np.flip(F, axis=1), axis=1), axis=1)
+    return tensile.reshape(-1, 3)
 
-def build_polymers(system, run_type, n_monomers, n_polymers, start_positions, positions, fene, bond_length, SEED, TETHERED=True):
+def add_bonds(system, exceeding_ids, fene, type_dictionary, distance, skip_if_bond_exists=True):
+    """
+    Create FENE bonds between particles that:
+      - are within 'distance' (via get_neighbors),
+      - are BOTH in 'exceeding_ids',
+      - and have different particle ids.
 
-    if run_type=="validation_uncoiling" or run_type=="experiment":
-        logging.info("Building coiled up linear polymer (validation uncoiling).")
+    Parameters
+    ----------
+    exceeding_ids : array-like of int
+        Particle IDs whose net tensile force exceeded the threshold.
+    candidate_ids : array-like of int
+        all particle IDs.
+    fene : object
+        Preconfigured FENE interaction (e.g., espressomd.interactions.FeneBond(...)).
+    distance : float
+        Neighbor cutoff radius.
+    skip_if_bond_exists : bool
+        If True, attempt to avoid adding a duplicate existing bond.
+
+    Returns
+    -------
+    added_pairs : list[tuple[int, int]]
+        The (p, q) pairs actually bonded (with p < q).
+    """
+    # Normalize to sets for O(1) membership
+    # cand_set = set(int(x) for x in np.asarray(candidate_ids).ravel().tolist())
+    exc_ids_set  = set(int(x) for x in np.asarray(exceeding_ids).ravel().tolist())
+
+    added_pairs = []
+
+    for pid in exc_ids_set:
+        p_handle = system.part.by_id(pid)
+        print(p_handle)
+        neighbor_ids = system.cell_system.get_neighbors(p_handle, distance)
+        neighbor_ids_set = set(int(x) for x in np.asarray(neighbor_ids).ravel().tolist())
+        print(pid, p_handle.bonds)
+
+        # get neighbors that are also have high enough tensile force
+        eligible_ids_set = sorted(neighbor_ids_set & exc_ids_set)
+
+        # already bonded
+        bonded_ids = set([int(getattr(partner, "id", partner)) for _, partner in p_handle.bonds])
+        print(f"Already bonded ids: {bonded_ids}")
+        # check for all particles with the same type
+        particle_type = type_dictionary[pid]
+        particles_same_type = set(system.part.select(type=particle_type).id)
+        print(f"Same type ids: {particles_same_type}")
+        new_bond_ids = eligible_ids_set - bonded_ids - particles_same_type
+        print(f"New bonds for: {new_bond_ids}")
+        
+        for pid_neighbor in new_bond_ids:
+            print(f"Adding bond between {pid} and {pid_neighbor}")
+            p_handle_neighbor = system.part.by_id(pid_neighbor)
+            # check if this pid is not already bonded to this particle (other way)
+            if pid not in set([int(getattr(partner, "id", partner)) for _, partner in pid_handle_neighbor.bonds]):
+                p_handle.add_bond((fene, p_handle_neighbor))
+
+    return added_pairs
+
+
+def build_polymers(system, n_monomers, n_polymers, start_positions, positions, fene, bond_length, SEED, TETHERED=True, COILED=True):
+
+    if COILED:
+        logging.info("Building coiled up linear polymer.")
         positions = espressomd.polymer.linear_polymer_positions(n_polymers=n_polymers, 
             beads_per_chain=n_monomers, start_positions=start_positions, respect_constraints=True,
             bond_length=bond_length, seed=SEED)
-    
+
+    type_dictionary = {}
     for j in range(n_polymers):
         p_previous = None
         first_bead = None
 
+        # Type per polymer, each monomer has unique id
         for i, pos in enumerate(positions[j]):
-            p = system.part.add(pos=pos, type=0)
+            p = system.part.add(pos=pos, type=j)
+            type_dictionary.update({p.id: j})
+
             if i == 0:
                 first_bead = p
             if p_previous is not None:
@@ -95,7 +171,9 @@ def build_polymers(system, run_type, n_monomers, n_polymers, start_positions, po
             if TETHERED==True:
                 first_bead.fix = [True, True, True]
 
-def run_simulation(params,run_type):
+    return type_dictionary
+
+def run_simulation(params):
     # Unpack from structured config
     sim = params["simulation"]
     phys = params["physical"]
@@ -113,10 +191,13 @@ def run_simulation(params,run_type):
     POSITIONS = sim["POSITIONS"]
     START_POSITIONS = sim["START_POSITIONS"]
     TETHERED = sim["TETHERED"]
+    COILED = sim["COILED"]
+    COUETTE = sim["COUETTE"]
     SHEAR = sim["SHEAR"] * 1e-4  # Convert units if needed
     save_VTK = sim["SAVE_VTK"]
     minimization_steps = sim["MINIMIZATION_STEPS"]
     SEED = sim["SEED"]
+    FORCE_THRESHOLD = sim["FORCE_THRESHOLD"]
 
     # Physical parameters
     KT = phys["KT"]
@@ -159,7 +240,15 @@ def run_simulation(params,run_type):
     system.time_step = TIME_STEP
 
     # Non-bonded interactions
-    system.non_bonded_inter[0, 0].lennard_jones.set_params(epsilon=epsilon, sigma=sigma, shift=shift, cutoff=cutoff)
+    all_types = np.arange(N_POLYMERS, dtype=int)
+    logging.info(f"All particle types: {all_types}")
+
+    # upper triangle,  covers (i,i) and each unordered (i,j)
+    ii, jj = np.triu_indices(all_types.size, k=0)
+
+    for i, j in zip(all_types[ii], all_types[jj]):
+        system.non_bonded_inter[i, j].lennard_jones.set_params(epsilon=epsilon, sigma=sigma, shift=shift, cutoff=cutoff)
+
     fene = espressomd.interactions.FeneBond(k=k, r_0=r_0, d_r_max=d_r_max)
     system.bonded_inter.add(fene)
 
@@ -168,13 +257,13 @@ def run_simulation(params,run_type):
     # Wall constraints
     wall_shape_z_up = espressomd.shapes.Wall(normal=[0, 0, 1], dist=AGRID * 0.5)
     wall_shape_z_down = espressomd.shapes.Wall(normal=[0, 0, -1], dist=-(BOX_Lz - AGRID * 0.5))
-    system.constraints.add(particle_type=1, penetrable=False, shape=wall_shape_z_up)
-    system.constraints.add(particle_type=1, penetrable=False, shape=wall_shape_z_down)
+    system.constraints.add(particle_type=N_POLYMERS+1, penetrable=False, shape=wall_shape_z_up)
+    system.constraints.add(particle_type=N_POLYMERS+1, penetrable=False, shape=wall_shape_z_down)
 
     if geo_sphere:
         logging.info("Adding Sphere.")
         sphere_constraint = espressomd.shapes.Sphere(radius=radius_object - 0.5, center=[BOX_Lx / 4, BOX_Ly / 2, 0.5], direction=1)
-        system.constraints.add(particle_type=1, penetrable=False, shape=sphere_constraint)
+        system.constraints.add(particle_type=N_POLYMERS+1, penetrable=False, shape=sphere_constraint)
         sphere = espressomd.shapes.Sphere(radius=radius_object, center=[BOX_Lx / 4, BOX_Ly / 2, 0.5])
         system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=sphere, velocity=[0, 0, 0]))
 
@@ -182,14 +271,17 @@ def run_simulation(params,run_type):
         logging.info("Adding Cylinder.")
         cylinder = espressomd.shapes.Cylinder(center=[BOX_Lx / 2, BOX_Ly / 2, 0], axis=[0.0, 0.0, 1.0], radius=radius_object, direction=+1)
         system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=cylinder, velocity=[0, 0, 0]))
-        system.constraints.add(particle_type=1, penetrable=False, shape=cylinder)
+        system.constraints.add(particle_type=N_POLYMERS+1, penetrable=False, shape=cylinder)
 
     # Polymers
     logging.info("Build Polymer(s).")
-    build_polymers(system, run_type, N_MONOMERS, N_POLYMERS, START_POSITIONS, POSITIONS, fene, r_0, SEED, TETHERED)
-    system.non_bonded_inter[0, 1].soft_sphere.set_params(a=1e-3, n=1.2, offset=0, cutoff=phys["a"])
-
-    particle_ids = [p.id for p in system.part.select(type=0)]
+    type_dictionary = build_polymers(system, N_MONOMERS, N_POLYMERS, START_POSITIONS, POSITIONS, fene, r_0, SEED, TETHERED, COILED)
+    # Add soft sphere potential between wall and particles
+    for particle_type in all_types:
+        system.non_bonded_inter[particle_type, N_POLYMERS+1].soft_sphere.set_params(a=1e-3, n=1.2, offset=0, cutoff=phys["a"])
+    
+    particle_ids = np.array([p.id for p in system.part.all()],dtype=int)
+    logging.info(f"Particle ids: {particle_ids}")
     forces = espressomd.observables.ParticleForces(ids=particle_ids)
     part_pos = espressomd.observables.ParticlePositions(ids=particle_ids)
 
@@ -199,10 +291,7 @@ def run_simulation(params,run_type):
     system.auto_update_accumulators.add(accumulator_positions)
 
     # Minimization and integrator
-    if TETHERED==True:
-        system.integrator.set_steepest_descent(f_max=0, gamma=0.001, max_displacement=0.0001 * sigma)
-    if TETHERED==False:
-        system.integrator.set_steepest_descent(f_max=0, gamma=0.001, max_displacement=0.0001 * sigma)
+    system.integrator.set_steepest_descent(f_max=0, gamma=0.001, max_displacement=0.0001 * sigma)
 
     logging.info(f"Energy minimization: {minimization_steps} steps")
 
@@ -228,26 +317,22 @@ def run_simulation(params,run_type):
     wall_shape_z_up_lb = espressomd.shapes.Wall(normal=[0, 0, 1], dist=AGRID)
     wall_shape_z_down_lb = espressomd.shapes.Wall(normal=[0, 0, -1], dist=-(BOX_Lz - AGRID))
 
-    if run_type=="validation_coiling":
+    if COUETTE:
+        logging.info(f"LB setup for uncoiling validation (nonzero fluid velocity)")
+        lb_boundary_up = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_up_lb, velocity=[0, 0, 0]))
+        lb_boundary_down = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_down_lb, velocity=[VELOCITY, 0, 0]))
+    if not COUETTE:
         logging.info("LB setup for coiling validation (zero fluid velocity)")
         lb_boundary_up = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_up_lb, velocity=[0, 0, 0]))
         lb_boundary_down = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_down_lb, velocity=[0, 0, 0]))
-    
-    if run_type=="validation_uncoiling" or run_type=="test_gridsizes":
-        logging.info(f"LB setup for uncoiling validation (nonzero fluid velocity)")
-        lb_boundary_up = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_up_lb, velocity=[0, 0, 0]))
-        lb_boundary_down = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_down_lb, velocity=[VELOCITY, 0, 0]))
-    
-    if run_type=="experiment":
-        logging.info(f"LB setup for uncoiling validation (nonzero fluid velocity)")
-        lb_boundary_up = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_up_lb, velocity=[0, 0, 0]))
-        lb_boundary_down = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_down_lb, velocity=[VELOCITY, 0, 0]))
 
     # Main simulation loop
     logging.info("Run simulation.")
     start_time = time.time()
 
-    forces_traj = np.empty((int(LOOPS), int(N_POLYMERS * N_MONOMERS), 3), dtype=np.float32)
+    # drag forces per monomer
+    drag_forces_traj = np.empty((int(LOOPS), int(N_POLYMERS * N_MONOMERS), 3), dtype=np.float32)
+    tensile_forces_traj = np.empty((int(LOOPS), int(N_POLYMERS * N_MONOMERS), 3), dtype=np.float32)
 
     if save_VTK:
         for i in range(int(LOOPS)):
@@ -255,16 +340,40 @@ def run_simulation(params,run_type):
             lbf.write_vtk_velocity(outdir + f"velocity_{i:05d}.vtk")
             lbf.write_vtk_boundary(outdir + f"boundary_{i:05d}.vtk")
             system.part.writevtk(outdir + f"particles_{i:05d}.vtk")
-            system.integrator.run(STEPS)
 
+            system.integrator.run(STEPS)
+            drag_forces_traj[i] = lb_drag_forces(system, lbf, GAMMA, particle_ids)
+
+    # LOOPS=5
+    # STEPS=100
     if not save_VTK:
         for i in range(int(LOOPS)):
             print(f"step {i + 1} of {int(LOOPS)}", end='\r', flush=True)
             system.integrator.run(STEPS)
 
-            forces_traj[i] = lb_drag_forces(system, lbf, GAMMA, particle_ids)
+            drag_forces_per_particle = lb_drag_forces(system, lbf, GAMMA, particle_ids)
+
+            # print(drag_forces_per_particle.shape)
+            drag_forces_traj[i] = drag_forces_per_particle
+
+            tensile_forces = compute_tensile_forces(drag_forces_per_particle, N_POLYMERS, N_MONOMERS)
+            tensile_forces_traj[i] = tensile_forces
+
+            net_tensile = np.abs(np.sum(tensile_forces, axis=1))
+            # print(net_tensile.shape)
+            # Boolean mask of exceeding monomers
+            exceed_mask = net_tensile > FORCE_THRESHOLD
+
+            # After you computed exceed_mask and have arrays
+            exceeding_ids = particle_ids[exceed_mask]      # ensure particle_ids is a NumPy array
+            R_CAPTURE = 10 * a                 # e.g. 0.15
+
+            added = add_bonds(system, exceeding_ids, fene=fene, type_dictionary=type_dictionary, distance=R_CAPTURE)
+
+            if added:
+                print(f"Added {len(added)} bonds; first few: {added[:5]}")
 
     end_time = time.time()
     print(f"Total runtime: {end_time - start_time:.2f} seconds")
     
-    return lbf, accumulator_forces, accumulator_positions, forces_traj
+    return lbf, accumulator_forces, accumulator_positions, drag_forces_traj
