@@ -58,18 +58,18 @@ config = load_config(config_path)
 #         plot_time_series(config, base_dir_gamma, plot_type="extension", validation_type="tethered", k_fene=10, a=0.03)
 #         plot_time_series(config, base_dir_gamma, plot_type="force", validation_type="tethered", target_shear=11636, monomer_index=10, a=0.03)
 
-base_dir = "/gpfs/home4/nroebersen/espresso_project/validation_data/single_runs/validation_uncoil_timeseries/k10/"
-LJ_folders = [f for f in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, f))]
-for LJ_folder in LJ_folders:
-    base_dir_LJ = os.path.join(base_dir, LJ_folder)
-    #plot_validation_results(config, base_dir_LJ, validation_type="tethered")
+# base_dir = "/gpfs/home4/nroebersen/espresso_project/validation_data/single_runs/validation_uncoil_timeseries/k10/"
+# LJ_folders = [f for f in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, f))]
+# for LJ_folder in LJ_folders:
+#     base_dir_LJ = os.path.join(base_dir, LJ_folder)
+#     #plot_validation_results(config, base_dir_LJ, validation_type="tethered")
 
-    gamma_folders = [f for f in os.listdir(base_dir_LJ) if os.path.isdir(os.path.join(base_dir_LJ, f))]
+#     gamma_folders = [f for f in os.listdir(base_dir_LJ) if os.path.isdir(os.path.join(base_dir_LJ, f))]
 
-    for gamma_folder in gamma_folders:
-        base_dir_gamma = os.path.join(base_dir_LJ, gamma_folder)
-        plot_time_series(config, base_dir_gamma, plot_type="extension", validation_type="tethered", k_fene=10, a=0.03)
-        plot_time_series(config, base_dir_gamma, plot_type="force", validation_type="tethered", target_shear=11636, monomer_index=10, a=0.03, avg_window=100)
+#     for gamma_folder in gamma_folders:
+#         base_dir_gamma = os.path.join(base_dir_LJ, gamma_folder)
+#         plot_time_series(config, base_dir_gamma, plot_type="extension", validation_type="tethered", k_fene=10, a=0.03)
+#         plot_time_series(config, base_dir_gamma, plot_type="force", validation_type="tethered", target_shear=11636, monomer_index=10, a=0.03, avg_window=100)
 
 # base_dir = "/gpfs/home4/nroebersen/espresso_project/validation_data/single_runs/validation_uncoil_timeseries/k1/"
 # LJ_folders = [f for f in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, f))]
@@ -116,6 +116,16 @@ for LJ_folder in LJ_folders:
 # plot_recoiling_across_LJ_for_gamma(config, base_dir, gamma_value=0.018, time_step=None, add_expected=True, N_mono=100, extension_metric="x", skip=[30, 28, 26, 24, 22, 8])
 
 
+base_dir = "/gpfs/home4/nroebersen/espresso_project/validation_data/free/validation_uncoil_free_k10_old"
+plot_free_across_LJ_for_gamma(
+    config,
+    base_dir,
+    target_gamma="gamma_00180",                 # float like 0.0055 or string "gamma_00055"
+    free_metric="end_to_end",     # "end_to_end" (default) or "max_pairwise"
+    aggregate_runs=True,          # if True: mean±std over run_*; if False: show each run
+    include_expected=True,
+    Box_Lx=64
+) 
 
 ######################################################################################################
 
@@ -323,13 +333,4 @@ for LJ_folder in LJ_folders:
 #     N_mono=60
 # )
 
-# base_dir = "/gpfs/home4/nroebersen/espresso_project/validation_data/free/validation_uncoil_free_k10"
-# plot_free_across_LJ_for_gamma(
-#     config,
-#     base_dir,
-#     target_gamma="gamma_00180",                 # float like 0.0055 or string "gamma_00055"
-#     free_metric="end_to_end",     # "end_to_end" (default) or "max_pairwise"
-#     aggregate_runs=True,          # if True: mean±std over run_*; if False: show each run
-#     include_expected=True,
-#     Box_Lx=64
-# ) 
+

@@ -33,6 +33,7 @@
     "BOX_Ly": 8,
     "BOX_Lz": 4,
     "CYLINDER": false,
+    "MICROCONTRACTION": false,
     "SPHERE": false,
     "RADIUS_OBJECT": 7.5,
     "AGRID": 1

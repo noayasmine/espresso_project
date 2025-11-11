@@ -210,6 +210,7 @@ def run_simulation(params):
     DIRECTORY = out["DIRECTORY"]
     geo_sphere = geom.get("SPHERE", False)
     geo_cylinder = geom.get("CYLINDER", False)
+    geo_microcontraction = geom.get("MICROCONTRACTION", False)
     radius_object = geom.get("RADIUS_OBJECT", 3)
 
     VELOCITY = sim["VELOCITY"]
@@ -270,22 +271,14 @@ def run_simulation(params):
     if geo_microcontraction:
         logging.info("Adding Microcontraction.")
         # add sphere as constraint 0.5 agrid from the wall
-        microcontraction_constraint = espressomd.shapes.Rhomboid(corner=np.array([AGRID *. 0.5, AGRID * 0.5, AGRID * 0.5]), a=np.array([20.0, 0.0, 0.0]),
+        microcontraction_constraint = espressomd.shapes.Rhomboid(corner=np.array([AGRID * 0.5, AGRID * 0.5, AGRID * 0.5]), a=np.array([20.0, 0.0, 0.0]),
             b=np.array([0.0, 130.0, 0.0]), c=np.array([40.0, 0.0, 80.0]), direction=1)
         # particle type per polymer range from 0 to N_POLYMER-1, giving LB shapes "particle type" N_POLYMERS
         system.constraints.add(particle_type=N_POLYMERS, penetrable=False, shape=microcontraction_constraint)
         
-        microcontraction = espressomd.shapes.Rhomboid(corner=np.array([AGRID *. 0.5, AGRID * 0.5, AGRID * 0.5]), a=np.array([20.0, 0.0, 0.0]),
+        microcontraction = espressomd.shapes.Rhomboid(corner=np.array([AGRID * 0.5, AGRID * 0.5, AGRID * 0.5]), a=np.array([20.0, 0.0, 0.0]),
             b=np.array([0.0, 130.0, 0.0]), c=np.array([40.0, 0.0, 80.0]), direction=1)
-        system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=smicrocontraction, velocity=[0, 0, 0]))
-
-
-    # if geo_cylinder:
-    #     logging.info("Adding Cylinder.")
-    #     cylinder = espressomd.shapes.Cylinder(center=[BOX_Lx / 2, BOX_Ly / 2, 0], axis=[0.0, 0.0, 1.0], radius=radius_object, direction=+1)
-    #     system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=cylinder, velocity=[0, 0, 0]))
-    #     # particle type per polymer range from 0 to N_POLYMER-1, giving LB shapes "particle type" N_POLYMERS
-    #     system.constraints.add(particle_type=N_POLYMERS, penetrable=False, shape=cylinder)
+        system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=microcontraction, velocity=[0, 0, 0]))
 
     # Polymers
     logging.info("Build Polymer(s).")

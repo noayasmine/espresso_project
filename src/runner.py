@@ -19,28 +19,30 @@ def add_dependent_parameters(config, LJ_strength=1):
 
 def compute_start_positions(config):
     n_polymers = config["simulation"]["N_POLYMERS"]
+    n_polymers_free = config["simulation"]["N_POLYMERS_FREE"]
     a = config["physical"]["a"]
     agrid = config["geometry"]["AGRID"]
     box_lx = config["geometry"]["BOX_Lx"]
     box_ly = config["geometry"]["BOX_Ly"]
+    box_lz = config["geometry"]["BOX_Lz"]
     radius = config["geometry"]["RADIUS_OBJECT"] - agrid / 2
     
-    # center = np.array([25, 25])
+    center = np.array([25, 25])
     spacing = 6*a 
 
-    if config["geometry"]["SPHERE"] or config["geometry"]["CYLINDER"]:
-        # n_attempts = 10 * n_polymers  # oversample to filter later
-        n_attempts = n_polymers
+    if config["geometry"]["SPHERE"]:
+        # oversample to filter later
+        n_attempts = 10 * n_polymers
 
         lower_bounds = [1, 10]
         upper_bounds = [60, 40]
         points = np.random.uniform(lower_bounds, upper_bounds, (n_attempts, 2))
 
-        # mask = np.sum((points - center) ** 2, axis=1) >= radius ** 2
-        # filtered_points = points[mask][:n_polymers]
+        mask = np.sum((points - center) ** 2, axis=1) >= radius ** 2
+        filtered_points = points[mask][:n_polymers]
 
-        # random_x, random_y = filtered_points.T
-        random_x, random_y = points.T
+        random_x, random_y = filtered_points.T
+        # random_x, random_y = points.T
 
     elif n_polymers == 1:
         random_x = np.array([box_lx / 5])
@@ -58,10 +60,20 @@ def compute_start_positions(config):
 
     # place monomers just above the wall
     # place monomers a (above the soft sphere potential)
-    z = np.full(n_polymers, 0.5 * agrid + a + 1e-07)
+    if n_polymers_free == 0:
+        z = np.full(n_polymers, 0.5 * agrid + a + 1e-07)
+        start_positions = np.stack([random_x, random_y, z], axis=1)
 
-    start_positions = np.stack([random_x, random_y, z], axis=1)
+    if n_polymers_free > 0:
+        z = np.full(n_polymers, 0.5 * agrid + a + 1e-07)
+        # z_free = np.random.uniform(low=0.5 * agrid + a + 1e-07, high=box_lz - (0.5 * agrid + a + 1e-07), size=n_polymers_free)
+        z_free = np.random.uniform(low=2*agrid, high=box_lz - (2*agrid), size=n_polymers_free)
+        z[-n_polymers_free:] = z_free
+        start_positions = np.stack([random_x, random_y, z], axis=1)
+
     config["simulation"]["START_POSITIONS"] = start_positions
+    print("Positions first monomers:")
+    print(start_positions)
 
     return start_positions
 
@@ -122,6 +134,8 @@ def add_polymer_positions(config):
         polymer_positions[:, 2] = np.maximum(polymer_positions[:, 2], 0.5 * AGRID + a + 1e-07)
         positions.append(polymer_positions)
 
+    print("Adding positions, will be overwritten if started from coiled state")
+    
     config["simulation"]["POSITIONS"] = positions
     config["simulation"]["MONOMER_COUNTS"] = monomer_counts.tolist()
 
@@ -246,25 +260,28 @@ if __name__ == "__main__":
         config["physical"]["GAMMA"] = gamma
         # 15 micrometer polymer
         config["physical"]["N_MONOMERS"] = 250
+        
         # large box to fit N_monomer=250 polymer
         config["geometry"]["BOX_Lx"] = 64
         config["geometry"]["BOX_Ly"] = 32
         config["geometry"]["BOX_Lz"] = 32
         config["simulation"]["N_POLYMERS"] = 1
+        config["simulation"]["N_POLYMERS_FREE"] = 1
+
         config["geometry"]["AGRID"] = 1
         # need to decrease timestep due to large boxsize 
         # (i.e. large Ma number for LB for high shear rates)
         config["simulation"]["TIME_STEP"] = 0.0005
         config["simulation"]["LB_TIME_STEP"] = 0.0005
         
-        if shear == 10000:
+        if shear > 10:
             config["simulation"]["TIME_STEP"] = 0.00025
             config["simulation"]["LB_TIME_STEP"] = 0.00025
 
         config["simulation"]["TETHERED"] = False
         config["simulation"]["TOTAL_TIME"] = 0.3
         # extra minimization steps needed for the large polymer
-        config["simulation"]["MINIMIZATION_STEPS"] = 400
+        config["simulation"]["MINIMIZATION_STEPS"] = 800
         # might need to increase fene bond for large these large free flowing polymers?
         # config["physical"]["k"] = 10
         config["physical"]["k"] = 100
@@ -329,7 +346,7 @@ if __name__ == "__main__":
         LJ_strength=18
 
         config["simulation"]["N_POLYMERS"] = 10
-        config["physical"]["k"] = 10
+        config["physical"]["k"] = 100
         config["physical"]["N_MONOMERS"] = 50
         # N_POLYMERS_FREE <= N_POLYMERS
         config["simulation"]["N_POLYMERS_FREE"] = 5
@@ -358,15 +375,17 @@ if __name__ == "__main__":
         config["simulation"]["TOTAL_TIME"] = 0.1
         LJ_strength=18
 
-        config["simulation"]["N_POLYMERS"] = 30
+        config["simulation"]["N_POLYMERS"] = 50
+        # config["simulation"]["N_POLYMERS"] = 1
         config["geometry"]["BOX_Lx"] = 100
         config["geometry"]["BOX_Ly"] = 50
         config["geometry"]["BOX_Lz"] = 30
         config["geometry"]["SPHERE"] = True
-        config["physical"]["k"] = 10
+        config["physical"]["k"] = 100
         config["physical"]["N_MONOMERS"] = 120
+        # config["physical"]["N_MONOMERS"] = 50
         # N_POLYMERS_FREE <= N_POLYMERS
-        config["simulation"]["N_POLYMERS_FREE"] = 10
+        config["simulation"]["N_POLYMERS_FREE"] = 20
         # config["simulation"]["DISTRIBUTION"] = "NORMAL"
 
         if config["physical"]["N_MONOMERS"] > 150:
@@ -374,10 +393,52 @@ if __name__ == "__main__":
             config["simulation"]["TIME_STEP"] = 0.001
             config["simulation"]["LB_TIME_STEP"] = 0.001
 
-        if config["physical"]["N_MONOMERS"] > 50 > 150:
+        if 150 >= config["physical"]["N_MONOMERS"] > 50:
             config["simulation"]["MINIMIZATION_STEPS"] = 400
             config["simulation"]["TIME_STEP"] = 0.001
             config["simulation"]["LB_TIME_STEP"] = 0.001
+
+        if config["physical"]["N_MONOMERS"] <= 50:
+            config["simulation"]["MINIMIZATION_STEPS"] = 200
+
+        add_timeloops_from_gridsize(config)
+        add_dependent_parameters(config, LJ_strength)
+        add_polymer_positions(config)
+
+    if run_type == "experiment_microcontraction":
+        shear = float(sys.argv[2])
+        save_dir = str(sys.argv[3])
+
+        config["output"]["DIRECTORY"] = f"./{save_dir}/"
+    
+        config["simulation"]["SAVE_VTK"] = True
+        config["simulation"]["SHEAR"] = shear
+        config["simulation"]["TOTAL_TIME"] = 0.1
+        LJ_strength=18
+
+        # config["simulation"]["N_POLYMERS"] = 50
+        config["simulation"]["N_POLYMERS"] = 1
+        config["geometry"]["BOX_Lx"] = 300
+        config["geometry"]["BOX_Ly"] = 130
+        config["geometry"]["BOX_Lz"] = 100
+        config["geometry"]["MICROCONTRACTION"] = True
+        config["physical"]["k"] = 100
+        # config["physical"]["N_MONOMERS"] = 120
+        config["physical"]["N_MONOMERS"] = 50
+        # N_POLYMERS_FREE <= N_POLYMERS
+        # config["simulation"]["N_POLYMERS_FREE"] = 20
+        config["simulation"]["TIME_STEP"] = 0.0005
+        config["simulation"]["LB_TIME_STEP"] = 0.0005
+
+        if config["physical"]["N_MONOMERS"] > 150:
+            config["simulation"]["MINIMIZATION_STEPS"] = 600
+            # config["simulation"]["TIME_STEP"] = 0.001
+            # config["simulation"]["LB_TIME_STEP"] = 0.001
+
+        if 150 >= config["physical"]["N_MONOMERS"] > 50:
+            config["simulation"]["MINIMIZATION_STEPS"] = 400
+            # config["simulation"]["TIME_STEP"] = 0.001
+            # config["simulation"]["LB_TIME_STEP"] = 0.001
 
         if config["physical"]["N_MONOMERS"] <= 50:
             config["simulation"]["MINIMIZATION_STEPS"] = 200
