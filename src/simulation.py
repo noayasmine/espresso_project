@@ -83,68 +83,63 @@ def compute_tensile_forces(forces_per_particle, N_POLYMERS, N_MONOMERS):
     tensile = np.flip(np.cumsum(np.flip(F, axis=1), axis=1), axis=1)
     return tensile.reshape(-1, 3)
 
-def add_bonds(system, exceeding_ids, fene, type_dictionary, distance, skip_if_bond_exists=True):
+def add_bonds(system, exceeding_ids, fene, type_dictionary, distance):
     """
     Create FENE bonds between particles that:
       - are within 'distance' (via get_neighbors),
-      - are BOTH in 'exceeding_ids',
-      - and have different particle ids.
+      - and have different particle ids (not same polymer).
 
     Parameters
-    ----------
     exceeding_ids : array-like of int
         Particle IDs whose net tensile force exceeded the threshold.
-    candidate_ids : array-like of int
-        all particle IDs.
     fene : object
         Preconfigured FENE interaction (e.g., espressomd.interactions.FeneBond(...)).
     distance : float
         Neighbor cutoff radius.
-    skip_if_bond_exists : bool
-        If True, attempt to avoid adding a duplicate existing bond.
 
     Returns
-    -------
     added_pairs : list[tuple[int, int]]
-        The (p, q) pairs actually bonded (with p < q).
     """
-    # Normalize to sets for O(1) membership
-    # cand_set = set(int(x) for x in np.asarray(candidate_ids).ravel().tolist())
-    exc_ids_set  = set(int(x) for x in np.asarray(exceeding_ids).ravel().tolist())
 
+    # cand_set = set(int(x) for x in np.asarray(candidate_ids).ravel().tolist())
+    # set of ids that exceed the tension threshold
+    exc_ids_set  = set(int(x) for x in np.asarray(exceeding_ids).ravel().tolist())
+    #print(f"Ids that exceed tension threshold:{exc_ids_set}")
     added_pairs = []
 
     for pid in exc_ids_set:
         p_handle = system.part.by_id(pid)
-        print(p_handle)
+        #print(p_handle)
         neighbor_ids = system.cell_system.get_neighbors(p_handle, distance)
         neighbor_ids_set = set(int(x) for x in np.asarray(neighbor_ids).ravel().tolist())
-        print(pid, p_handle.bonds)
-
-        # get neighbors that are also have high enough tensile force
-        eligible_ids_set = sorted(neighbor_ids_set & exc_ids_set)
+        #print(pid, p_handle.bonds)
 
         # already bonded
         bonded_ids = set([int(getattr(partner, "id", partner)) for _, partner in p_handle.bonds])
-        print(f"Already bonded ids: {bonded_ids}")
+        #print(f"Already bonded ids set: {bonded_ids}")
         # check for all particles with the same type
         particle_type = type_dictionary[pid]
+        #print(f"particle type {particle_type}")
+
         particles_same_type = set(system.part.select(type=particle_type).id)
-        print(f"Same type ids: {particles_same_type}")
-        new_bond_ids = eligible_ids_set - bonded_ids - particles_same_type
-        print(f"New bonds for: {new_bond_ids}")
+
+        #particles_same_type = set(system.part.select(type=particle_type).id)
+        #print(f"Same type ids: {particles_same_type}")
+
+        new_bond_ids = neighbor_ids_set - bonded_ids - particles_same_type
+        #print(f"New bonds for: {new_bond_ids}")
         
         for pid_neighbor in new_bond_ids:
-            print(f"Adding bond between {pid} and {pid_neighbor}")
+            #print(f"Adding bond between {pid} and {pid_neighbor}")
             p_handle_neighbor = system.part.by_id(pid_neighbor)
-            # check if this pid is not already bonded to this particle (other way)
-            if pid not in set([int(getattr(partner, "id", partner)) for _, partner in pid_handle_neighbor.bonds]):
+            # Check if this pid is not already bonded to this particle (other way)
+            if pid not in set([int(getattr(partner, "id", partner)) for _, partner in p_handle_neighbor.bonds]):
                 p_handle.add_bond((fene, p_handle_neighbor))
 
     return added_pairs
 
 
-def build_polymers(system, n_monomers, n_polymers, start_positions, positions, fene, bond_length, SEED, TETHERED=True, COILED=True):
+def build_polymers(system, n_monomers, n_polymers, n_polymers_free, start_positions, positions, fene, bond_length, SEED, TETHERED=True, COILED=True):
 
     if COILED:
         logging.info("Building coiled up linear polymer.")
@@ -168,7 +163,7 @@ def build_polymers(system, n_monomers, n_polymers, start_positions, positions, f
                 p.add_bond((fene, p_previous))
             p_previous = p
 
-            if TETHERED==True:
+            if TETHERED==True and j >= n_polymers_free-1:
                 first_bead.fix = [True, True, True]
 
     return type_dictionary
@@ -188,6 +183,7 @@ def run_simulation(params):
     TIME_STEP, LB_TIME_STEP, LOOPS, STEPS = sim["TIME_STEP"], sim["LB_TIME_STEP"], sim["LOOPS"], sim["STEPS"]
 
     N_POLYMERS = sim["N_POLYMERS"]
+    N_POLYMERS_FREE = sim["N_POLYMERS_FREE"]
     POSITIONS = sim["POSITIONS"]
     START_POSITIONS = sim["START_POSITIONS"]
     TETHERED = sim["TETHERED"]
@@ -275,7 +271,7 @@ def run_simulation(params):
 
     # Polymers
     logging.info("Build Polymer(s).")
-    type_dictionary = build_polymers(system, N_MONOMERS, N_POLYMERS, START_POSITIONS, POSITIONS, fene, r_0, SEED, TETHERED, COILED)
+    type_dictionary = build_polymers(system, N_MONOMERS, N_POLYMERS, N_POLYMERS_FREE, START_POSITIONS, POSITIONS, fene, r_0, SEED, TETHERED, COILED)
     # Add soft sphere potential between wall and particles
     for particle_type in all_types:
         system.non_bonded_inter[particle_type, N_POLYMERS+1].soft_sphere.set_params(a=1e-3, n=1.2, offset=0, cutoff=phys["a"])
@@ -342,7 +338,21 @@ def run_simulation(params):
             system.part.writevtk(outdir + f"particles_{i:05d}.vtk")
 
             system.integrator.run(STEPS)
-            drag_forces_traj[i] = lb_drag_forces(system, lbf, GAMMA, particle_ids)
+
+            drag_forces_per_particle = lb_drag_forces(system, lbf, GAMMA, particle_ids)
+            drag_forces_traj[i] = drag_forces_per_particle
+
+            tensile_forces = compute_tensile_forces(drag_forces_per_particle, N_POLYMERS, N_MONOMERS)
+            tensile_forces_traj[i] = tensile_forces
+            net_tensile = np.abs(np.sum(tensile_forces, axis=1))
+
+            # Boolean mask of monomers exceeding threshold tension 
+            exceed_mask = net_tensile > FORCE_THRESHOLD
+            exceeding_ids = particle_ids[exceed_mask]      
+            R_CAPTURE = 2 * a
+
+            added = add_bonds(system, exceeding_ids, fene=fene, type_dictionary=type_dictionary, distance=R_CAPTURE)
+
 
     # LOOPS=5
     # STEPS=100
@@ -353,25 +363,20 @@ def run_simulation(params):
 
             drag_forces_per_particle = lb_drag_forces(system, lbf, GAMMA, particle_ids)
 
-            # print(drag_forces_per_particle.shape)
             drag_forces_traj[i] = drag_forces_per_particle
 
             tensile_forces = compute_tensile_forces(drag_forces_per_particle, N_POLYMERS, N_MONOMERS)
             tensile_forces_traj[i] = tensile_forces
 
             net_tensile = np.abs(np.sum(tensile_forces, axis=1))
-            # print(net_tensile.shape)
-            # Boolean mask of exceeding monomers
+
+            # Boolean mask of monomers exceeding threshold tension 
             exceed_mask = net_tensile > FORCE_THRESHOLD
-
-            # After you computed exceed_mask and have arrays
-            exceeding_ids = particle_ids[exceed_mask]      # ensure particle_ids is a NumPy array
-            R_CAPTURE = 10 * a                 # e.g. 0.15
-
+            exceeding_ids = particle_ids[exceed_mask]      
+            R_CAPTURE = 2 * a                 
             added = add_bonds(system, exceeding_ids, fene=fene, type_dictionary=type_dictionary, distance=R_CAPTURE)
 
-            if added:
-                print(f"Added {len(added)} bonds; first few: {added[:5]}")
+            # add removal of bonds? 
 
     end_time = time.time()
     print(f"Total runtime: {end_time - start_time:.2f} seconds")

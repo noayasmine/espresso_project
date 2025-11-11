@@ -324,14 +324,18 @@ if __name__ == "__main__":
         config["simulation"]["SAVE_VTK"] = False
         config["simulation"]["SHEAR"] = shear
         config["simulation"]["TOTAL_TIME"] = 0.1
-        initialize="coiled"
         LJ_strength=18
 
-        config["physical"]["N_POLYMERS"] = 20
+        config["simulation"]["N_POLYMERS"] = 20
         config["geometry"]["BOX_Lx"] = 14
         config["geometry"]["BOX_Ly"] = 8
         config["geometry"]["BOX_Lz"] = 4
         # config["geometry"]["SPHERE"] = True
+        config["physical"]["k"] = 10
+        config["physical"]["N_MONOMERS"] = 50
+        # N_POLYMERS_FREE <= N_POLYMERS
+        config["simulation"]["N_POLYMERS_FREE"] = 10
+        config["simulation"]["SAVE_VTK"] = True
 
         if config["physical"]["N_MONOMERS"] > 50:
             config["simulation"]["MINIMIZATION_STEPS"] = 600

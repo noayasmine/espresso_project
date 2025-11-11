@@ -16,6 +16,7 @@
     "STEPS": 1000,
     "TOTAL_TIME":0.4,
     "N_POLYMERS": 2,
+    "N_POLYMERS_FREE": 0,
     "DISTRIBUTION":"UNIFORM",
     "TETHERED":true,
     "COILED":true,
