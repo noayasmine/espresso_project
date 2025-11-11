@@ -105,7 +105,6 @@ def add_bonds(system, exceeding_ids, fene, type_dictionary, distance):
     # set of ids that exceed the tension threshold
     exc_ids_set  = set(int(x) for x in np.asarray(exceeding_ids).ravel().tolist())
     #print(f"Ids that exceed tension threshold:{exc_ids_set}")
-    added_pairs = []
 
     for pid in exc_ids_set:
         p_handle = system.part.by_id(pid)
@@ -135,8 +134,9 @@ def add_bonds(system, exceeding_ids, fene, type_dictionary, distance):
             # Check if this pid is not already bonded to this particle (other way)
             if pid not in set([int(getattr(partner, "id", partner)) for _, partner in p_handle_neighbor.bonds]):
                 p_handle.add_bond((fene, p_handle_neighbor))
-
-    return added_pairs
+                print(f"Add bond {pid} and {pid_neighbor}")
+    
+    return 
 
 
 def build_polymers(system, n_monomers, n_polymers, n_polymers_free, start_positions, positions, fene, bond_length, SEED, TETHERED=True, COILED=True):
@@ -239,9 +239,9 @@ def run_simulation(params):
     all_types = np.arange(N_POLYMERS, dtype=int)
     logging.info(f"All particle types: {all_types}")
 
+    # add LJ potential between all monomers, but only one way (no two-way bonds, the bonding is symmetric)
     # upper triangle,  covers (i,i) and each unordered (i,j)
     ii, jj = np.triu_indices(all_types.size, k=0)
-
     for i, j in zip(all_types[ii], all_types[jj]):
         system.non_bonded_inter[i, j].lennard_jones.set_params(epsilon=epsilon, sigma=sigma, shift=shift, cutoff=cutoff)
 
@@ -253,30 +253,49 @@ def run_simulation(params):
     # Wall constraints
     wall_shape_z_up = espressomd.shapes.Wall(normal=[0, 0, 1], dist=AGRID * 0.5)
     wall_shape_z_down = espressomd.shapes.Wall(normal=[0, 0, -1], dist=-(BOX_Lz - AGRID * 0.5))
-    system.constraints.add(particle_type=N_POLYMERS+1, penetrable=False, shape=wall_shape_z_up)
-    system.constraints.add(particle_type=N_POLYMERS+1, penetrable=False, shape=wall_shape_z_down)
+    # particle type per polymer range from 0 to N_POLYMER-1, giving LB shapes "particle type" N_POLYMERS
+    system.constraints.add(particle_type=N_POLYMERS, penetrable=False, shape=wall_shape_z_up)
+    system.constraints.add(particle_type=N_POLYMERS, penetrable=False, shape=wall_shape_z_down)
 
     if geo_sphere:
         logging.info("Adding Sphere.")
-        sphere_constraint = espressomd.shapes.Sphere(radius=radius_object - 0.5, center=[BOX_Lx / 4, BOX_Ly / 2, 0.5], direction=1)
-        system.constraints.add(particle_type=N_POLYMERS+1, penetrable=False, shape=sphere_constraint)
-        sphere = espressomd.shapes.Sphere(radius=radius_object, center=[BOX_Lx / 4, BOX_Ly / 2, 0.5])
+        # add sphere as constraint 0.5 agrid from the wall
+        sphere_constraint = espressomd.shapes.Sphere(radius=radius_object - 0.5 * AGRID, center=[25, 25, radius_object + 0.5 * AGRID], direction=1)
+        # particle type per polymer range from 0 to N_POLYMER-1, giving LB shapes "particle type" N_POLYMERS
+        system.constraints.add(particle_type=N_POLYMERS, penetrable=False, shape=sphere_constraint)
+        
+        sphere = espressomd.shapes.Sphere(radius=radius_object, center=[25, 25, radius_object + 0.5 * AGRID])
         system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=sphere, velocity=[0, 0, 0]))
 
-    if geo_cylinder:
-        logging.info("Adding Cylinder.")
-        cylinder = espressomd.shapes.Cylinder(center=[BOX_Lx / 2, BOX_Ly / 2, 0], axis=[0.0, 0.0, 1.0], radius=radius_object, direction=+1)
-        system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=cylinder, velocity=[0, 0, 0]))
-        system.constraints.add(particle_type=N_POLYMERS+1, penetrable=False, shape=cylinder)
+    if geo_microcontraction:
+        logging.info("Adding Microcontraction.")
+        # add sphere as constraint 0.5 agrid from the wall
+        microcontraction_constraint = espressomd.shapes.Rhomboid(corner=np.array([AGRID *. 0.5, AGRID * 0.5, AGRID * 0.5]), a=np.array([20.0, 0.0, 0.0]),
+            b=np.array([0.0, 130.0, 0.0]), c=np.array([40.0, 0.0, 80.0]), direction=1)
+        # particle type per polymer range from 0 to N_POLYMER-1, giving LB shapes "particle type" N_POLYMERS
+        system.constraints.add(particle_type=N_POLYMERS, penetrable=False, shape=microcontraction_constraint)
+        
+        microcontraction = espressomd.shapes.Rhomboid(corner=np.array([AGRID *. 0.5, AGRID * 0.5, AGRID * 0.5]), a=np.array([20.0, 0.0, 0.0]),
+            b=np.array([0.0, 130.0, 0.0]), c=np.array([40.0, 0.0, 80.0]), direction=1)
+        system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=smicrocontraction, velocity=[0, 0, 0]))
+
+
+    # if geo_cylinder:
+    #     logging.info("Adding Cylinder.")
+    #     cylinder = espressomd.shapes.Cylinder(center=[BOX_Lx / 2, BOX_Ly / 2, 0], axis=[0.0, 0.0, 1.0], radius=radius_object, direction=+1)
+    #     system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=cylinder, velocity=[0, 0, 0]))
+    #     # particle type per polymer range from 0 to N_POLYMER-1, giving LB shapes "particle type" N_POLYMERS
+    #     system.constraints.add(particle_type=N_POLYMERS, penetrable=False, shape=cylinder)
 
     # Polymers
     logging.info("Build Polymer(s).")
     type_dictionary = build_polymers(system, N_MONOMERS, N_POLYMERS, N_POLYMERS_FREE, START_POSITIONS, POSITIONS, fene, r_0, SEED, TETHERED, COILED)
     # Add soft sphere potential between wall and particles
     for particle_type in all_types:
-        system.non_bonded_inter[particle_type, N_POLYMERS+1].soft_sphere.set_params(a=1e-3, n=1.2, offset=0, cutoff=phys["a"])
+        system.non_bonded_inter[particle_type, N_POLYMERS].soft_sphere.set_params(a=1e-3, n=1.2, offset=0, cutoff=phys["a"])
     
-    particle_ids = np.array([p.id for p in system.part.all()],dtype=int)
+    particle_ids = np.arange(N_MONOMERS * N_POLYMERS, dtype=int)
+    # particle_ids = np.array([p.id for p in system.part.all()],dtype=int)
     logging.info(f"Particle ids: {particle_ids}")
     forces = espressomd.observables.ParticleForces(ids=particle_ids)
     part_pos = espressomd.observables.ParticlePositions(ids=particle_ids)
@@ -362,12 +381,10 @@ def run_simulation(params):
             system.integrator.run(STEPS)
 
             drag_forces_per_particle = lb_drag_forces(system, lbf, GAMMA, particle_ids)
-
             drag_forces_traj[i] = drag_forces_per_particle
 
             tensile_forces = compute_tensile_forces(drag_forces_per_particle, N_POLYMERS, N_MONOMERS)
             tensile_forces_traj[i] = tensile_forces
-
             net_tensile = np.abs(np.sum(tensile_forces, axis=1))
 
             # Boolean mask of monomers exceeding threshold tension 

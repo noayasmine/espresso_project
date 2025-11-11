@@ -25,20 +25,22 @@ def compute_start_positions(config):
     box_ly = config["geometry"]["BOX_Ly"]
     radius = config["geometry"]["RADIUS_OBJECT"] - agrid / 2
     
-    center = np.array([box_lx / 4, box_ly / 2])
+    # center = np.array([25, 25])
     spacing = 6*a 
 
     if config["geometry"]["SPHERE"] or config["geometry"]["CYLINDER"]:
-        n_attempts = 10 * n_polymers  # oversample to filter later
+        # n_attempts = 10 * n_polymers  # oversample to filter later
+        n_attempts = n_polymers
 
-        lower_bounds = [agrid, 2 * agrid]
-        upper_bounds = [box_lx - 7, box_ly - 2 * agrid]
+        lower_bounds = [1, 10]
+        upper_bounds = [60, 40]
         points = np.random.uniform(lower_bounds, upper_bounds, (n_attempts, 2))
 
-        mask = np.sum((points - center) ** 2, axis=1) >= radius ** 2
-        filtered_points = points[mask][:n_polymers]
+        # mask = np.sum((points - center) ** 2, axis=1) >= radius ** 2
+        # filtered_points = points[mask][:n_polymers]
 
-        random_x, random_y = filtered_points.T
+        # random_x, random_y = filtered_points.T
+        random_x, random_y = points.T
 
     elif n_polymers == 1:
         random_x = np.array([box_lx / 5])
@@ -60,6 +62,7 @@ def compute_start_positions(config):
 
     start_positions = np.stack([random_x, random_y, z], axis=1)
     config["simulation"]["START_POSITIONS"] = start_positions
+
     return start_positions
 
 def add_polymer_positions(config):
@@ -72,19 +75,18 @@ def add_polymer_positions(config):
     bond_length = 2 * config["physical"]["a"]
 
     distribution_type = config["simulation"].get("DISTRIBUTION", "UNIFORM")
-    min_monomers = config["simulation"].get("MIN_MONOMERS", 50)
-    std_dev = config["simulation"].get("STD_MONOMERS", 10)
-
     std_dev_monomer_direction = config["simulation"]["stdev_initial_pos"]
 
     if distribution_type == "UNIFORM":
         monomer_counts = np.full(N_POLYMERS, N_MONOMERS, dtype=int)
 
     elif distribution_type == "NORMAL":
+        std_dev = config["simulation"].get("STD_MONOMERS", 30)
         raw_counts = np.random.normal(loc=N_MONOMERS, scale=std_dev, size=N_POLYMERS)
         monomer_counts = np.clip(np.round(raw_counts), min_monomers, None).astype(int)
 
     elif distribution_type == "SKEWED":
+        min_monomers = config["simulation"].get("MIN_MONOMERS", 40)
         # Skewed right (longer tail to the right), using exponential distribution
         scale = std_dev  # bigger means more skew
         skewed = np.random.exponential(scale=scale, size=N_POLYMERS)
@@ -321,24 +323,59 @@ if __name__ == "__main__":
 
         config["output"]["DIRECTORY"] = f"./{save_dir}/"
     
-        config["simulation"]["SAVE_VTK"] = False
+        config["simulation"]["SAVE_VTK"] = True
         config["simulation"]["SHEAR"] = shear
         config["simulation"]["TOTAL_TIME"] = 0.1
         LJ_strength=18
 
-        config["simulation"]["N_POLYMERS"] = 20
-        config["geometry"]["BOX_Lx"] = 14
-        config["geometry"]["BOX_Ly"] = 8
-        config["geometry"]["BOX_Lz"] = 4
-        # config["geometry"]["SPHERE"] = True
+        config["simulation"]["N_POLYMERS"] = 10
         config["physical"]["k"] = 10
         config["physical"]["N_MONOMERS"] = 50
         # N_POLYMERS_FREE <= N_POLYMERS
-        config["simulation"]["N_POLYMERS_FREE"] = 10
-        config["simulation"]["SAVE_VTK"] = True
+        config["simulation"]["N_POLYMERS_FREE"] = 5
+        config["simulation"]["LB_TIME_STEP"] = 0.001
 
         if config["physical"]["N_MONOMERS"] > 50:
             config["simulation"]["MINIMIZATION_STEPS"] = 600
+            config["simulation"]["TIME_STEP"] = 0.001
+            config["simulation"]["LB_TIME_STEP"] = 0.001
+
+        if config["physical"]["N_MONOMERS"] <= 50:
+            config["simulation"]["MINIMIZATION_STEPS"] = 200
+
+        add_timeloops_from_gridsize(config)
+        add_dependent_parameters(config, LJ_strength)
+        add_polymer_positions(config)
+    
+    if run_type == "experiment_sphere":
+        shear = float(sys.argv[2])
+        save_dir = str(sys.argv[3])
+
+        config["output"]["DIRECTORY"] = f"./{save_dir}/"
+    
+        config["simulation"]["SAVE_VTK"] = True
+        config["simulation"]["SHEAR"] = shear
+        config["simulation"]["TOTAL_TIME"] = 0.1
+        LJ_strength=18
+
+        config["simulation"]["N_POLYMERS"] = 30
+        config["geometry"]["BOX_Lx"] = 100
+        config["geometry"]["BOX_Ly"] = 50
+        config["geometry"]["BOX_Lz"] = 30
+        config["geometry"]["SPHERE"] = True
+        config["physical"]["k"] = 10
+        config["physical"]["N_MONOMERS"] = 120
+        # N_POLYMERS_FREE <= N_POLYMERS
+        config["simulation"]["N_POLYMERS_FREE"] = 10
+        # config["simulation"]["DISTRIBUTION"] = "NORMAL"
+
+        if config["physical"]["N_MONOMERS"] > 150:
+            config["simulation"]["MINIMIZATION_STEPS"] = 600
+            config["simulation"]["TIME_STEP"] = 0.001
+            config["simulation"]["LB_TIME_STEP"] = 0.001
+
+        if config["physical"]["N_MONOMERS"] > 50 > 150:
+            config["simulation"]["MINIMIZATION_STEPS"] = 400
             config["simulation"]["TIME_STEP"] = 0.001
             config["simulation"]["LB_TIME_STEP"] = 0.001
 

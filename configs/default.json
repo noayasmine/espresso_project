@@ -34,7 +34,7 @@
     "BOX_Lz": 4,
     "CYLINDER": false,
     "SPHERE": false,
-    "RADIUS_OBJECT": 3,
+    "RADIUS_OBJECT": 7.5,
     "AGRID": 1
   },
   "fluid": {
