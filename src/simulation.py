@@ -163,7 +163,7 @@ def build_polymers(system, n_monomers, n_polymers, n_polymers_free, start_positi
                 p.add_bond((fene, p_previous))
             p_previous = p
 
-            if TETHERED==True and j >= n_polymers_free-1:
+            if TETHERED==True:
                 first_bead.fix = [True, True, True]
 
     return type_dictionary
@@ -194,6 +194,7 @@ def run_simulation(params):
     minimization_steps = sim["MINIMIZATION_STEPS"]
     SEED = sim["SEED"]
     FORCE_THRESHOLD = sim["FORCE_THRESHOLD"]
+    MIN_LOOPS = sim["MINIMIZATION_LOOPS"]
 
     # Physical parameters
     KT = phys["KT"]
@@ -261,11 +262,11 @@ def run_simulation(params):
     if geo_sphere:
         logging.info("Adding Sphere.")
         # add sphere as constraint 0.5 agrid from the wall
-        sphere_constraint = espressomd.shapes.Sphere(radius=radius_object - 0.5 * AGRID, center=[25, 25, radius_object + 0.5 * AGRID], direction=1)
+        sphere_constraint = espressomd.shapes.Sphere(radius=radius_object, center=[25, 25, radius_object + 0.5 * AGRID], direction=1)
         # particle type per polymer range from 0 to N_POLYMER-1, giving LB shapes "particle type" N_POLYMERS
         system.constraints.add(particle_type=N_POLYMERS, penetrable=False, shape=sphere_constraint)
         
-        sphere = espressomd.shapes.Sphere(radius=radius_object, center=[25, 25, radius_object + 0.5 * AGRID])
+        sphere = espressomd.shapes.Sphere(radius=radius_object - 0.5 * AGRID, center=[25, 25, radius_object + 0.5 * AGRID])
         system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=sphere, velocity=[0, 0, 0]))
 
     if geo_microcontraction:
@@ -306,7 +307,7 @@ def run_simulation(params):
     if save_VTK:
         for i in range(minimization_steps):
             print(f"step {i + 1} of {minimization_steps}", end='\r', flush=True)
-            system.part.writevtk(outdir + f"particles_prep{i:05d}.vtk")
+            system.part.writevtk(outdir + f"particles_energy_minimization_{i:05d}.vtk")
             system.integrator.run(STEPS)
 
     if not save_VTK:
@@ -315,22 +316,55 @@ def run_simulation(params):
             system.integrator.run(STEPS)
 
     system.integrator.set_vv()
-
-    # LB Fluid setup
+    logging.info(f"Initialize LB fluid.")
 
     lbf = espressomd.lb.LBFluid(kT=0, seed=42, agrid=AGRID, dens=DENS, visc=VISC, tau=LB_TIME_STEP)
     system.actors.add(lbf)
     system.thermostat.set_lb(LB_fluid=lbf, gamma=GAMMA, seed=42)
 
+    # # Use this for coiling instead of energy minimization?
+    # if COILED:
+    #     logging.info(f"Run {MIN_LOOPS} loops steps to coil up polymers.")
+    #     wall_shape_z_up_lb = espressomd.shapes.Wall(normal=[0, 0, 1], dist=AGRID)
+    #     wall_shape_z_down_lb = espressomd.shapes.Wall(normal=[0, 0, -1], dist=-(BOX_Lz - AGRID))
+
+    #     logging.info("LB setup to initialize coiled state (zero fluid velocity)")
+
+    #     lb_boundary_up = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_up_lb, velocity=[0, 0, 0]))
+    #     lb_boundary_down = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_down_lb, velocity=[0, 0, 0]))
+
+    #     if save_VTK:
+    #         for i in range(int(MIN_LOOPS)):
+    #             print(f"step {i + 1} of {int(MIN_LOOPS)}", end='\r', flush=True)
+    #             system.part.writevtk(outdir + f"particles_coiling_{i:05d}.vtk")
+    #             lbf.write_vtk_boundary(outdir + f"boundary_coiling_{i:05d}.vtk")
+    #             system.integrator.run(STEPS)
+
+    #     if not save_VTK:
+    #         for i in range(int(MIN_LOOPS)):
+    #             print(f"step {i + 1} of {int(MIN_LOOPS)}", end='\r', flush=True)
+    #             system.integrator.run(STEPS)
+
+    #     system.lbboundaries.remove(lb_boundary_up)
+    #     system.lbboundaries.remove(lb_boundary_down)
+
+    # system.integrator.set_vv()
+
+    # # LB Fluid setup
+
+    # lbf = espressomd.lb.LBFluid(kT=0, seed=42, agrid=AGRID, dens=DENS, visc=VISC, tau=LB_TIME_STEP)
+    # system.actors.add(lbf)
+    # system.thermostat.set_lb(LB_fluid=lbf, gamma=GAMMA, seed=42)
+
     wall_shape_z_up_lb = espressomd.shapes.Wall(normal=[0, 0, 1], dist=AGRID)
     wall_shape_z_down_lb = espressomd.shapes.Wall(normal=[0, 0, -1], dist=-(BOX_Lz - AGRID))
 
     if COUETTE:
-        logging.info(f"LB setup for uncoiling validation (nonzero fluid velocity)")
+        logging.info(f"Set LB setup for uncoiling validation (nonzero fluid velocity)")
         lb_boundary_up = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_up_lb, velocity=[0, 0, 0]))
         lb_boundary_down = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_down_lb, velocity=[VELOCITY, 0, 0]))
     if not COUETTE:
-        logging.info("LB setup for coiling validation (zero fluid velocity)")
+        logging.info("Set LB setup for coiling validation (zero fluid velocity)")
         lb_boundary_up = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_up_lb, velocity=[0, 0, 0]))
         lb_boundary_down = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_down_lb, velocity=[0, 0, 0]))
 
@@ -365,9 +399,6 @@ def run_simulation(params):
 
             added = add_bonds(system, exceeding_ids, fene=fene, type_dictionary=type_dictionary, distance=R_CAPTURE)
 
-
-    # LOOPS=5
-    # STEPS=100
     if not save_VTK:
         for i in range(int(LOOPS)):
             print(f"step {i + 1} of {int(LOOPS)}", end='\r', flush=True)
