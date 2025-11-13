@@ -138,10 +138,9 @@ def add_bonds(system, exceeding_ids, fene, type_dictionary, distance):
     
     return 
 
+def build_polymers(system, n_monomers, n_polymers, n_polymers_free, start_positions, positions, fene, bond_length, SEED, TETHERED=True, COILED=True, COMPUTE_POSITIONS=True):
 
-def build_polymers(system, n_monomers, n_polymers, n_polymers_free, start_positions, positions, fene, bond_length, SEED, TETHERED=True, COILED=True):
-
-    if COILED:
+    if COILED and COMPUTE_POSITIONS:
         logging.info("Building coiled up linear polymer.")
         positions = espressomd.polymer.linear_polymer_positions(n_polymers=n_polymers, 
             beads_per_chain=n_monomers, start_positions=start_positions, respect_constraints=True,
@@ -167,6 +166,7 @@ def build_polymers(system, n_monomers, n_polymers, n_polymers_free, start_positi
                 first_bead.fix = [True, True, True]
 
     return type_dictionary
+
 
 def run_simulation(params):
     # Unpack from structured config
@@ -195,6 +195,7 @@ def run_simulation(params):
     SEED = sim["SEED"]
     FORCE_THRESHOLD = sim["FORCE_THRESHOLD"]
     MIN_LOOPS = sim["MINIMIZATION_LOOPS"]
+    COMPUTE_POSITIONS = sim["COMPUTE_POSITIONS"]
 
     # Physical parameters
     KT = phys["KT"]
@@ -283,7 +284,8 @@ def run_simulation(params):
 
     # Polymers
     logging.info("Build Polymer(s).")
-    type_dictionary = build_polymers(system, N_MONOMERS, N_POLYMERS, N_POLYMERS_FREE, START_POSITIONS, POSITIONS, fene, r_0, SEED, TETHERED, COILED)
+    type_dictionary = build_polymers(system, N_MONOMERS, N_POLYMERS, N_POLYMERS_FREE, START_POSITIONS, POSITIONS, fene, r_0, SEED, \
+        TETHERED, COILED, COMPUTE_POSITIONS)
     # Add soft sphere potential between wall and particles
     for particle_type in all_types:
         system.non_bonded_inter[particle_type, N_POLYMERS].soft_sphere.set_params(a=1e-3, n=1.2, offset=0, cutoff=phys["a"])
@@ -314,6 +316,9 @@ def run_simulation(params):
         for i in range(minimization_steps):
             print(f"step {i + 1} of {minimization_steps}", end='\r', flush=True)
             system.integrator.run(STEPS)
+
+    np.savez_compressed(os.path.join(outdir, "init_positions.npz"), positions=accumulator_positions.time_series())
+    print(f"Positions shape: {accumulator_positions.time_series().shape}")
 
     system.integrator.set_vv()
     logging.info(f"Initialize LB fluid.")
@@ -378,6 +383,10 @@ def run_simulation(params):
 
     if save_VTK:
         for i in range(int(LOOPS)):
+            if i==1:
+                np.savez_compressed(os.path.join(DIRECTORY, "init_positions.npz"), positions=accumulator_positions.time_series())
+                print(f"Positions shape: {accumulator_positions.time_series().shape}")
+
             print(f"step {i + 1} of {int(LOOPS)}", end='\r', flush=True)
             lbf.write_vtk_velocity(outdir + f"velocity_{i:05d}.vtk")
             lbf.write_vtk_boundary(outdir + f"boundary_{i:05d}.vtk")
@@ -401,6 +410,10 @@ def run_simulation(params):
 
     if not save_VTK:
         for i in range(int(LOOPS)):
+            if i==1:
+                np.savez_compressed(os.path.join(DIRECTORY, "init_positions.npz"), positions=accumulator_positions.time_series())
+                print(f"Positions shape: {accumulator_positions.time_series().shape}")
+              
             print(f"step {i + 1} of {int(LOOPS)}", end='\r', flush=True)
             system.integrator.run(STEPS)
 

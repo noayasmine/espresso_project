@@ -4,6 +4,7 @@ import numpy as np
 import time
 from simulation import run_simulation
 from utils import save_results
+import os
 
 def load_config(path):
     with open(path) as f:
@@ -77,6 +78,24 @@ def compute_start_positions(config):
 
     return start_positions
 
+def polymers_positions_from_saved_config(start_positions):
+    # init_positions: (1, N_monomers, 3)
+    # start_positions: (N_polymers, 3)
+    print("Read out position file")
+    outdir = "./experiments/try_exp/"
+    data = np.load(os.path.join(outdir, "init_positions.npz"))
+    init_positions = data["positions"]
+
+    # subtract first monomer so polymer is normalized to origin
+    origin = init_positions[0, 0]                   # (3,)
+    shifted = init_positions - origin               # (1, N_monomers, 3)
+
+    # broadcast: (1, N_monomers, 3) → (N_polymers, N_monomers, 3)
+    positions = shifted + start_positions[:, None, :]  # broadcasting target positions
+    config["simulation"]["POSITIONS"] = positions
+    print("Added positions from file")
+    return 
+
 def add_polymer_positions(config):
     start_positions = compute_start_positions(config)
 
@@ -86,6 +105,7 @@ def add_polymer_positions(config):
     AGRID = config["geometry"]["AGRID"]
     COILED = config["simulation"]["COILED"]
     bond_length = 2 * config["physical"]["a"]
+    COMPUTE_POSITIONS = config["simulation"]["COMPUTE_POSITIONS"]
 
     distribution_type = config["simulation"].get("DISTRIBUTION", "UNIFORM")
     std_dev_monomer_direction = config["simulation"]["stdev_initial_pos"]
@@ -144,6 +164,9 @@ def add_polymer_positions(config):
             positions.append(polymer_positions)
         
         config["simulation"]["POSITIONS"] = positions
+
+    if COILED and not COMPUTE_POSITIONS:
+        polymers_positions_from_saved_config(start_positions)
 
     config["simulation"]["MONOMER_COUNTS"] = monomer_counts.tolist()
 
@@ -362,9 +385,10 @@ if __name__ == "__main__":
 
         LJ_strength=18
 
-        config["simulation"]["N_POLYMERS"] = 20
+        config["simulation"]["N_POLYMERS"] = 1
+        config["simulation"]["MINIMIZATION_STEPS"] = 1000
         config["physical"]["k"] = 100
-        config["physical"]["N_MONOMERS"] = 50
+        config["physical"]["N_MONOMERS"] = 250
         # N_POLYMERS_FREE <= N_POLYMERS
         # config["simulation"]["N_POLYMERS_FREE"] = 5
         config["simulation"]["LB_TIME_STEP"] = 0.001

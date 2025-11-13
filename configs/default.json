@@ -28,7 +28,8 @@
     "SAVE_VTK":false,
     "MINIMIZATION_STEPS":200,
     "MINIMIZATION_TIME":0.05,
-    "POSITIONS":[]
+    "POSITIONS":[],
+    "COMPUTE_POSITIONS":true
   },
   "geometry": {
     "BOX_Lx": 14,
