@@ -1211,11 +1211,13 @@ def plot_recoiling_across_LJ_for_gamma(
 def plot_free_across_LJ_for_gamma(
     config,
     base_dir,
-    target_gamma,                 # float like 0.0055 or string "gamma_00055"
+    target_gamma,                 
     free_metric="end_to_end",     # "end_to_end" (default) or "max_pairwise"
-    aggregate_runs=True,          # if True: mean±std over run_*; if False: show each run
+    aggregate_runs=True,
     include_expected=True,
-    Box_Lx=None,                  # optional override for PBC in x
+    Box_Lx=64,
+    Box_Ly=32,
+    Box_Lz=32,
     outname=None
 ):
     """
@@ -1249,28 +1251,21 @@ def plot_free_across_LJ_for_gamma(
         else:
             return float(max_pairwise_extension_ts_pbc(positions, Lx, Ly, Lz)[-1])
 
-    # ---------- styling / constants ----------
+
     plt.style.use("seaborn-v0_8-whitegrid")
-    # colors = plt.get_cmap("tab20").colors
     colors = plt.get_cmap("Dark2").colors
 
     a = config["physical"]["a"]
-    # dyn_visc_SI is (dyn·s/cm²); wall shear stress τ = (shear_rate) * μ,
-    # then convert to dyn/cm² by multiplying by 10 (matching your earlier code path)
     dyn_visc_SI = config["physical"]["VISC_dyn"] / 10.0
 
-    # box lengths / PBC
-    geom = config.get("geometry", {})
-    Lx_eff = Box_Lx if (Box_Lx is not None) else geom.get("BOX_Lx", None)
-    Ly_eff = geom.get("BOX_Ly", None) if geom.get("BOX_Ly", None) is not None else Lx_eff
-    Lz_eff = geom.get("BOX_Lz", None)
+    Lx_eff = Box_Lx 
+    Ly_eff = Box_Ly
+    Lz_eff = Box_Lz
 
-    # expected (free) overlay — same as your earlier "Schneider et al." example
-    exp_x_raw = np.array([1, 10, 100, 400, 1100, 5000, 10000], dtype=float)
+    # expected (free) "Schneider et al."
+    exp_x = np.array([1, 10, 100, 400, 1100, 5000, 10000], dtype=float)
     exp_y     = np.array([0.07,  0.07,   0.07,  0.07,    0.07,   0.75,   1], dtype=float)
     exp_s     = np.array([0.07, 0.07, 0.07, 0.07,  0.07,  0.3,   0.3], dtype=float)
-    # exp_x = exp_x_raw * dyn_visc_SI * 10.0  # to dyn/cm²
-    exp_x = exp_x_raw # in shear rate 1/s
 
     # parse/format gamma
     gpat = re.compile(r"gamma_(\d{5})")
@@ -1304,8 +1299,8 @@ def plot_free_across_LJ_for_gamma(
         # Format LJ label as kT value like your tethered helper
         m = lj_pat.match(lj)
         if m:
-            lj_factor_4kT = int(m.group(1)) / 1e2     # “XX.XX × 4kT”
-            kT_value = lj_factor_4kT * 4.0            # convert to kT
+            lj_factor_kT = int(m.group(1)) / 1e2     # “XX.XX × 4kT”
+            kT_value = lj_factor_kT 
             lj_label_base = fmt_kT(kT_value)
         else:
             lj_label_base = lj
@@ -1353,7 +1348,6 @@ def plot_free_across_LJ_for_gamma(
             if not Efinals:
                 continue
 
-            # x_val = shear_int * dyn_visc_SI * 10.0  # wall shear stress [dyn/cm^2]
             x_val = shear_int # shear rate in 1/s
             xs.append(x_val)
             ys_mean.append(np.mean(Efinals))

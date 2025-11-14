@@ -54,7 +54,7 @@ def lb_drag_forces(system, lb, gamma, ids):
     Compute F_drag = -gamma * (v_i - u(x_i)) for selected particles.
 
     system : espressomd.System
-    lb : your LB fluid object (LBFluidCPU / LBFluidGPU)
+    lb : LB fluid object (LBFluid)
     gamma : float (LB coupling constant)
     ids : list/array of particle ids
     """
@@ -62,7 +62,7 @@ def lb_drag_forces(system, lb, gamma, ids):
     pos = espressomd.observables.ParticlePositions(ids=ids).calculate()   # Nx3 numpy
     vel = espressomd.observables.ParticleVelocities(ids=ids).calculate()  # Nx3 numpy
 
-    # Interpolated fluid velocities
+    # interpolated fluid velocities
     u = np.empty_like(pos)
     gi = lb.get_interpolated_velocity  # local ref for speed
     for n in range(ids.size):
@@ -101,35 +101,42 @@ def add_bonds(system, exceeding_ids, fene, type_dictionary, distance):
     added_pairs : list[tuple[int, int]]
     """
 
-    # cand_set = set(int(x) for x in np.asarray(candidate_ids).ravel().tolist())
     # set of ids that exceed the tension threshold
-    exc_ids_set  = set(int(x) for x in np.asarray(exceeding_ids).ravel().tolist())
-    #print(f"Ids that exceed tension threshold:{exc_ids_set}")
+    exc_ids_set  = set(exceeding_ids)
+    # print(f"Ids that exceed tension threshold:{exc_ids_set}")
 
     for pid in exc_ids_set:
+        # get particle handle from id
         p_handle = system.part.by_id(pid)
-        #print(p_handle)
-        neighbor_ids = system.cell_system.get_neighbors(p_handle, distance)
-        neighbor_ids_set = set(int(x) for x in np.asarray(neighbor_ids).ravel().tolist())
-        #print(pid, p_handle.bonds)
 
-        # already bonded
+        # print(p_handle)
+        neighbor_ids = system.cell_system.get_neighbors(p_handle, distance)
+        neighbor_ids_set = set(neighbor_ids)
+        # print(pid, p_handle.bonds)
+
+        # check to which particles this pid is already bonded
         bonded_ids = set([int(getattr(partner, "id", partner)) for _, partner in p_handle.bonds])
-        #print(f"Already bonded ids set: {bonded_ids}")
+        # print(f"Already bonded ids set: {bonded_ids}")
+        # if particle already has two bonds (i.e. neighboring monomer + self-association bond)
+        # do NOT add more bonds
+        if len(bonded_ids) >= 2: 
+            print(f"Particle {pid} is already bonded")
+            continue
+        # print(f"Already bonded ids set: {bonded_ids}")
         # check for all particles with the same type
         particle_type = type_dictionary[pid]
-        #print(f"particle type {particle_type}")
+        # print(f"particle type {particle_type}")
 
         particles_same_type = set(system.part.select(type=particle_type).id)
 
-        #particles_same_type = set(system.part.select(type=particle_type).id)
-        #print(f"Same type ids: {particles_same_type}")
+        # particles_same_type = set(system.part.select(type=particle_type).id)
+        # print(f"Same type ids: {particles_same_type}")
 
         new_bond_ids = neighbor_ids_set - bonded_ids - particles_same_type
-        #print(f"New bonds for: {new_bond_ids}")
+        # print(f"New bonds for: {new_bond_ids}")
         
         for pid_neighbor in new_bond_ids:
-            #print(f"Adding bond between {pid} and {pid_neighbor}")
+            # print(f"Adding bond between {pid} and {pid_neighbor}")
             p_handle_neighbor = system.part.by_id(pid_neighbor)
             # Check if this pid is not already bonded to this particle (other way)
             if pid not in set([int(getattr(partner, "id", partner)) for _, partner in p_handle_neighbor.bonds]):
@@ -139,7 +146,8 @@ def add_bonds(system, exceeding_ids, fene, type_dictionary, distance):
     return 
 
 def build_polymers(system, n_monomers, n_polymers, n_polymers_free, start_positions, positions, fene, bond_length, SEED, TETHERED=True, COILED=True, COMPUTE_POSITIONS=True):
-
+    
+    # compute positions here only if we are not using precomputed positions
     if COILED and COMPUTE_POSITIONS:
         logging.info("Building coiled up linear polymer.")
         positions = espressomd.polymer.linear_polymer_positions(n_polymers=n_polymers, 
@@ -169,14 +177,14 @@ def build_polymers(system, n_monomers, n_polymers, n_polymers_free, start_positi
 
 
 def run_simulation(params):
-    # Unpack from structured config
+    # unpack from structured config
     sim = params["simulation"]
     phys = params["physical"]
     geom = params["geometry"]
     fluid = params["fluid"]
     out = params["output"]
 
-    # Geometry and runtime
+    # geometry and runtime
     BOX_Lx, BOX_Ly, BOX_Lz = geom["BOX_Lx"], geom["BOX_Ly"], geom["BOX_Lz"]
     AGRID = geom["AGRID"]
 
@@ -189,15 +197,15 @@ def run_simulation(params):
     TETHERED = sim["TETHERED"]
     COILED = sim["COILED"]
     COUETTE = sim["COUETTE"]
-    SHEAR = sim["SHEAR"] * 1e-4  # Convert units if needed
+    SHEAR = sim["SHEAR"] * 1e-4  # convert to sim units
     save_VTK = sim["SAVE_VTK"]
     minimization_steps = sim["MINIMIZATION_STEPS"]
     SEED = sim["SEED"]
     FORCE_THRESHOLD = sim["FORCE_THRESHOLD"]
-    MIN_LOOPS = sim["MINIMIZATION_LOOPS"]
     COMPUTE_POSITIONS = sim["COMPUTE_POSITIONS"]
+    SELF_ASSOCIATE = sim["SELF_ASSOCIATE"]
 
-    # Physical parameters
+    # physical parameters
     KT = phys["KT"]
     GAMMA = phys["GAMMA"]
     N_MONOMERS = phys["N_MONOMERS"]
@@ -205,18 +213,20 @@ def run_simulation(params):
     k, r_0, d_r_max = phys["k"], phys["r_0"], phys["d_r_max"]
     epsilon, sigma, cutoff, shift = phys["epsilon"], phys["sigma"], phys["cutoff"], phys["shift"]
     
-    # Fluid properties
+    # fluid properties
     VISC, DENS = fluid["VISC"], fluid["DENS"]
 
-    # Output and boundary
+    # output and boundary
     DIRECTORY = out["DIRECTORY"]
     geo_sphere = geom.get("SPHERE", False)
     geo_cylinder = geom.get("CYLINDER", False)
     geo_microcontraction = geom.get("MICROCONTRACTION", False)
-    radius_object = geom.get("RADIUS_OBJECT", 3)
+    radius_object = geom.get("RADIUS_OBJECT", 7.5)
 
     VELOCITY = sim["VELOCITY"]
     outdir = DIRECTORY + f'/vtk_data/'
+    
+    os.makedirs(DIRECTORY, exist_ok=True)
 
     if save_VTK:
         os.makedirs(outdir, exist_ok=True)
@@ -301,24 +311,25 @@ def run_simulation(params):
     system.auto_update_accumulators.add(accumulator_forces)
     system.auto_update_accumulators.add(accumulator_positions)
 
-    # Minimization and integrator
-    system.integrator.set_steepest_descent(f_max=0, gamma=0.001, max_displacement=0.0001 * sigma)
+    if COMPUTE_POSITIONS:
+        # Minimization and integrator
+        system.integrator.set_steepest_descent(f_max=0, gamma=0.001, max_displacement=0.0001 * sigma)
 
-    logging.info(f"Energy minimization: {minimization_steps} steps")
+        logging.info(f"Energy minimization: {minimization_steps} steps")
 
-    if save_VTK:
-        for i in range(minimization_steps):
-            print(f"step {i + 1} of {minimization_steps}", end='\r', flush=True)
-            system.part.writevtk(outdir + f"particles_energy_minimization_{i:05d}.vtk")
-            system.integrator.run(STEPS)
+        if save_VTK:
+            for i in range(minimization_steps):
+                print(f"step {i + 1} of {minimization_steps}", end='\r', flush=True)
+                system.part.writevtk(outdir + f"particles_energy_minimization_{i:05d}.vtk")
+                system.integrator.run(STEPS)
 
-    if not save_VTK:
-        for i in range(minimization_steps):
-            print(f"step {i + 1} of {minimization_steps}", end='\r', flush=True)
-            system.integrator.run(STEPS)
+        if not save_VTK:
+            for i in range(minimization_steps):
+                print(f"step {i + 1} of {minimization_steps}", end='\r', flush=True)
+                system.integrator.run(STEPS)
 
-    np.savez_compressed(os.path.join(outdir, "init_positions.npz"), positions=accumulator_positions.time_series())
-    print(f"Positions shape: {accumulator_positions.time_series().shape}")
+        np.savez_compressed(os.path.join(outdir, "init_positions.npz"), positions=accumulator_positions.time_series())
+        print(f"Positions shape: {accumulator_positions.time_series().shape}")
 
     system.integrator.set_vv()
     logging.info(f"Initialize LB fluid.")
@@ -326,40 +337,6 @@ def run_simulation(params):
     lbf = espressomd.lb.LBFluid(kT=0, seed=42, agrid=AGRID, dens=DENS, visc=VISC, tau=LB_TIME_STEP)
     system.actors.add(lbf)
     system.thermostat.set_lb(LB_fluid=lbf, gamma=GAMMA, seed=42)
-
-    # # Use this for coiling instead of energy minimization?
-    # if COILED:
-    #     logging.info(f"Run {MIN_LOOPS} loops steps to coil up polymers.")
-    #     wall_shape_z_up_lb = espressomd.shapes.Wall(normal=[0, 0, 1], dist=AGRID)
-    #     wall_shape_z_down_lb = espressomd.shapes.Wall(normal=[0, 0, -1], dist=-(BOX_Lz - AGRID))
-
-    #     logging.info("LB setup to initialize coiled state (zero fluid velocity)")
-
-    #     lb_boundary_up = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_up_lb, velocity=[0, 0, 0]))
-    #     lb_boundary_down = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_down_lb, velocity=[0, 0, 0]))
-
-    #     if save_VTK:
-    #         for i in range(int(MIN_LOOPS)):
-    #             print(f"step {i + 1} of {int(MIN_LOOPS)}", end='\r', flush=True)
-    #             system.part.writevtk(outdir + f"particles_coiling_{i:05d}.vtk")
-    #             lbf.write_vtk_boundary(outdir + f"boundary_coiling_{i:05d}.vtk")
-    #             system.integrator.run(STEPS)
-
-    #     if not save_VTK:
-    #         for i in range(int(MIN_LOOPS)):
-    #             print(f"step {i + 1} of {int(MIN_LOOPS)}", end='\r', flush=True)
-    #             system.integrator.run(STEPS)
-
-    #     system.lbboundaries.remove(lb_boundary_up)
-    #     system.lbboundaries.remove(lb_boundary_down)
-
-    # system.integrator.set_vv()
-
-    # # LB Fluid setup
-
-    # lbf = espressomd.lb.LBFluid(kT=0, seed=42, agrid=AGRID, dens=DENS, visc=VISC, tau=LB_TIME_STEP)
-    # system.actors.add(lbf)
-    # system.thermostat.set_lb(LB_fluid=lbf, gamma=GAMMA, seed=42)
 
     wall_shape_z_up_lb = espressomd.shapes.Wall(normal=[0, 0, 1], dist=AGRID)
     wall_shape_z_down_lb = espressomd.shapes.Wall(normal=[0, 0, -1], dist=-(BOX_Lz - AGRID))
@@ -401,12 +378,13 @@ def run_simulation(params):
             tensile_forces_traj[i] = tensile_forces
             net_tensile = np.abs(np.sum(tensile_forces, axis=1))
 
-            # Boolean mask of monomers exceeding threshold tension 
-            exceed_mask = net_tensile > FORCE_THRESHOLD
-            exceeding_ids = particle_ids[exceed_mask]      
-            R_CAPTURE = 2 * a
+            if SELF_ASSOCIATE:
+                # boolean mask of monomers exceeding threshold tension 
+                exceed_mask = net_tensile > FORCE_THRESHOLD
+                exceeding_ids = particle_ids[exceed_mask]      
+                R_CAPTURE = 2 * a
 
-            added = add_bonds(system, exceeding_ids, fene=fene, type_dictionary=type_dictionary, distance=R_CAPTURE)
+                added = add_bonds(system, exceeding_ids, fene=fene, type_dictionary=type_dictionary, distance=R_CAPTURE)
 
     if not save_VTK:
         for i in range(int(LOOPS)):
@@ -424,11 +402,12 @@ def run_simulation(params):
             tensile_forces_traj[i] = tensile_forces
             net_tensile = np.abs(np.sum(tensile_forces, axis=1))
 
-            # Boolean mask of monomers exceeding threshold tension 
-            exceed_mask = net_tensile > FORCE_THRESHOLD
-            exceeding_ids = particle_ids[exceed_mask]      
-            R_CAPTURE = 2 * a                 
-            added = add_bonds(system, exceeding_ids, fene=fene, type_dictionary=type_dictionary, distance=R_CAPTURE)
+            if SELF_ASSOCIATE:
+                # boolean mask of monomers exceeding threshold tension 
+                exceed_mask = net_tensile > FORCE_THRESHOLD
+                exceeding_ids = particle_ids[exceed_mask]      
+                R_CAPTURE = 2 * a                 
+                added = add_bonds(system, exceeding_ids, fene=fene, type_dictionary=type_dictionary, distance=R_CAPTURE)
 
             # add removal of bonds? 
 

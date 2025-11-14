@@ -2,6 +2,7 @@
   "physical": {
     "KT": 4.280012e-06,
     "GAMMA": 0.018,
+    "e_LJ":18,
     "N_MONOMERS": 50,
     "a": 0.03,
     "k": 10,
@@ -29,7 +30,8 @@
     "MINIMIZATION_STEPS":200,
     "MINIMIZATION_TIME":0.05,
     "POSITIONS":[],
-    "COMPUTE_POSITIONS":true
+    "COMPUTE_POSITIONS":true,
+    "SELF_ASSOCIATE":false
   },
   "geometry": {
     "BOX_Lx": 14,

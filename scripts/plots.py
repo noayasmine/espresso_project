@@ -116,12 +116,22 @@ config = load_config(config_path)
 # plot_recoiling_across_LJ_for_gamma(config, base_dir, gamma_value=0.018, time_step=None, add_expected=True, N_mono=100, extension_metric="x", skip=[30, 28, 26, 24, 22, 8])
 
 
-base_dir = "/gpfs/home4/nroebersen/espresso_project/validation_data/free/validation_uncoil_free_k10_old"
+base_dir = "/gpfs/home4/nroebersen/espresso_project/validation_data/free/validation_uncoil_free_k10"
 plot_free_across_LJ_for_gamma(
     config,
     base_dir,
     target_gamma="gamma_00180",                 # float like 0.0055 or string "gamma_00055"
     free_metric="end_to_end",     # "end_to_end" (default) or "max_pairwise"
+    aggregate_runs=True,          # if True: mean±std over run_*; if False: show each run
+    include_expected=True,
+    Box_Lx=64
+) 
+base_dir = "/gpfs/home4/nroebersen/espresso_project/validation_data/free/validation_uncoil_free_k10"
+plot_free_across_LJ_for_gamma(
+    config,
+    base_dir,
+    target_gamma="gamma_00180",                 # float like 0.0055 or string "gamma_00055"
+    free_metric="max_pairwise",     # "end_to_end" (default) or "max_pairwise"
     aggregate_runs=True,          # if True: mean±std over run_*; if False: show each run
     include_expected=True,
     Box_Lx=64

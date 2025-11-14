@@ -19,57 +19,61 @@ def add_dependent_parameters(config, LJ_strength=18):
     config["simulation"]["VELOCITY"] = config["simulation"]["SHEAR"] * 1e-4 * (config["geometry"]["BOX_Lz"] - config["geometry"]["AGRID"])
 
 def compute_start_positions(config):
-    n_polymers = config["simulation"]["N_POLYMERS"]
-    n_polymers_free = config["simulation"]["N_POLYMERS_FREE"]
+    """ Computes positions of first monomers
+
+    Returns 
+    start_positions (N_POLYMERS, 3)
+    + adds start_positions to json file (config)
+    """
+    N_POLYMERS = config["simulation"]["N_POLYMERS"]
+    N_POLYMERS_FREE = config["simulation"]["N_POLYMERS_FREE"]
     a = config["physical"]["a"]
-    agrid = config["geometry"]["AGRID"]
-    box_lx = config["geometry"]["BOX_Lx"]
-    box_ly = config["geometry"]["BOX_Ly"]
-    box_lz = config["geometry"]["BOX_Lz"]
-    
-    spacing = 6*a 
+    AGRID = config["geometry"]["AGRID"]
+    BOX_Lx = config["geometry"]["BOX_Lx"]
+    BOX_Ly = config["geometry"]["BOX_Ly"]
+    BOX_Lz = config["geometry"]["BOX_Lz"] 
 
     if config["geometry"]["SPHERE"]:
         # oversample to filter later
-        n_attempts = 10 * n_polymers
+        n_attempts = 10 * N_POLYMERS
         center = np.array([25, 25])
-        radius = config["geometry"]["RADIUS_OBJECT"] + a # - agrid / 2
+        radius = config["geometry"]["RADIUS_OBJECT"] + a # - AGRID / 2
         lower_bounds = [1, 10]
         upper_bounds = [60, 40]
         points = np.random.uniform(lower_bounds, upper_bounds, (n_attempts, 2))
 
         mask = np.sum((points - center) ** 2, axis=1) >= radius ** 2
-        filtered_points = points[mask][:n_polymers]
+        filtered_points = points[mask][:N_POLYMERS]
 
         random_x, random_y = filtered_points.T
         # random_x, random_y = points.T
 
-    elif n_polymers == 1:
-        random_x = np.array([box_lx / 5])
-        random_y = np.array([box_ly / 2])
+    elif N_POLYMERS == 1:
+        random_x = np.array([BOX_Lx / 5])
+        random_y = np.array([BOX_Ly / 2])
     
-    elif n_polymers == 2:
-        center_x = box_lx / 4
-        center_y = box_ly / 2
+    elif N_POLYMERS == 2:
+        spacing = 6*a
+        center_x = BOX_Lx / 4
+        center_y = BOX_Ly / 2
         random_x = np.array([center_x, center_x])
         random_y = np.array([center_y - spacing / 2, center_y + spacing / 2])
         
     else:
-        random_x = np.random.uniform(agrid + 2*a, box_lx - (agrid + 2*a), n_polymers)
-        random_y = np.random.uniform(agrid + 2*a, box_lx - (agrid + 2*a), n_polymers)
+        random_x = np.random.uniform(AGRID + 2*a, BOX_Lx - (AGRID + 2*a), N_POLYMERS)
+        random_y = np.random.uniform(AGRID + 2*a, BOX_Lx - (AGRID + 2*a), N_POLYMERS)
 
     # place monomers just above the wall
     # place monomers a (above the soft sphere potential)
-
-    z = np.full(n_polymers, 0.5 * agrid + a + 1e-07)
+    z = np.full(N_POLYMERS, 0.5 * AGRID + a + 1e-07)
     start_positions = np.stack([random_x, random_y, z], axis=1)
 
     # put last n_polymer_free polymers with higher z
-    # if n_polymers_free > 0:
-    #     z = np.full(n_polymers, 0.5 * agrid + a + 1e-07)
-    #     # z_free = np.random.uniform(low=0.5 * agrid + a + 1e-07, high=box_lz - (0.5 * agrid + a + 1e-07), size=n_polymers_free)
-    #     z_free = np.random.uniform(low=2*agrid, high=box_lz - (2*agrid), size=n_polymers_free)
-    #     z[-n_polymers_free:] = z_free
+    # if N_POLYMERS_free > 0:
+    #     z = np.full(N_POLYMERS, 0.5 * AGRID + a + 1e-07)
+    #     # z_free = np.random.uniform(low=0.5 * AGRID + a + 1e-07, high=BOX_Lz - (0.5 * AGRID + a + 1e-07), size=N_POLYMERS_free)
+    #     z_free = np.random.uniform(low=2*AGRID, high=BOX_Lz - (2*AGRID), size=N_POLYMERS_free)
+    #     z[-N_POLYMERS_free:] = z_free
     #     start_positions = np.stack([random_x, random_y, z], axis=1)
 
     config["simulation"]["START_POSITIONS"] = start_positions
@@ -78,22 +82,32 @@ def compute_start_positions(config):
 
     return start_positions
 
-def polymers_positions_from_saved_config(start_positions):
-    # init_positions: (1, N_monomers, 3)
-    # start_positions: (N_polymers, 3)
-    print("Read out position file")
-    outdir = "./experiments/try_exp/"
-    data = np.load(os.path.join(outdir, "init_positions.npz"))
+def load_polymer_positions(start_positions):
+    """ Takes initial positions of first monomers and loads file 
+    with coiled polymer positions, puts coiled polymer at each starting position
+
+    init_positions: (1, N_monomers, 3)
+    start_positions: (N_POLYMERS, 3)
+
+    Adds positions (N_POLYMERS, N_monomers, 3) to json file (config).
+    """
+
+    outdir = "./configs/initial_polymer_positions"
+    N_MONOMERS = config["physical"]["N_MONOMERS"]
+    path_to_file = os.path.join(outdir, f"init_positions_{N_MONOMERS}_seed_1.npz")
+    print(f"Read out position file: {path_to_file}")
+    data = np.load(path_to_file)
     init_positions = data["positions"]
 
     # subtract first monomer so polymer is normalized to origin
     origin = init_positions[0, 0]                   # (3,)
     shifted = init_positions - origin               # (1, N_monomers, 3)
 
-    # broadcast: (1, N_monomers, 3) → (N_polymers, N_monomers, 3)
+    # broadcast: (1, N_monomers, 3) → (N_POLYMERS, N_monomers, 3)
     positions = shifted + start_positions[:, None, :]  # broadcasting target positions
     config["simulation"]["POSITIONS"] = positions
     print("Added positions from file")
+
     return 
 
 def add_polymer_positions(config):
@@ -110,9 +124,6 @@ def add_polymer_positions(config):
     distribution_type = config["simulation"].get("DISTRIBUTION", "UNIFORM")
     std_dev_monomer_direction = config["simulation"]["stdev_initial_pos"]
 
-    if distribution_type == "UNIFORM":
-        monomer_counts = np.full(N_POLYMERS, N_MONOMERS, dtype=int)
-
     # elif distribution_type == "NORMAL":
     #     std_dev = config["simulation"].get("STD_MONOMERS", 30)
     #     raw_counts = np.random.normal(loc=N_MONOMERS, scale=std_dev, size=N_POLYMERS)
@@ -125,24 +136,19 @@ def add_polymer_positions(config):
     #     skewed = np.random.exponential(scale=scale, size=N_POLYMERS)
     #     monomer_counts = np.round(skewed + min_monomers).astype(int)
 
-    else:
-        raise ValueError(f"Unsupported distribution type: {distribution_type}")
+    # else:
+    #     raise ValueError(f"Unsupported distribution type: {distribution_type}")
     
     if not COILED:
-        print("Adding custom positions (uncoiled starting state)")
+        monomer_counts = np.full(N_POLYMERS, N_MONOMERS, dtype=int)
+        print("Adding custom positions (uncoiled starting state).")
         positions = []
 
         for j in range(N_POLYMERS):
             n_monomers = monomer_counts[j]
             start_pos = start_positions[j]
-            
-            # if COILED:
-            #     direction = np.array([0.5, 0.0, 0.5])  # initial direction
-            #     std_dev_monomer_direction = 0.15
 
             direction = np.array([1.0, 0.0, 0.0])  # initial direction
-
-            # direction = direction / np.linalg.norm(direction)
 
             polymer_positions = []
             current_pos = start_pos.copy()
@@ -166,27 +172,24 @@ def add_polymer_positions(config):
         config["simulation"]["POSITIONS"] = positions
 
     if COILED and not COMPUTE_POSITIONS:
-        polymers_positions_from_saved_config(start_positions)
-
-    config["simulation"]["MONOMER_COUNTS"] = monomer_counts.tolist()
+        load_polymer_positions(start_positions)
 
 def add_timeloops_from_gridsize(config):
+    """ Calculate number of loops for specified number of 
+    steps and total time (in seconds)
+
+    Adds loops [int] to json file (config) 
+    """
     steps = config["simulation"]["STEPS"]
-    gridsize = config["geometry"]["AGRID"]
     total_time = config["simulation"]["TOTAL_TIME"] # seconds
-    total_min_time = config["simulation"]["MINIMIZATION_TIME"]
 
     time_unit = 1e-4 # seconds
     total_sim_time = total_time / time_unit
-    total_min_sim_time = total_min_time / time_unit
+
     time_step = config["simulation"]["TIME_STEP"] 
 
-    MIN_LOOPS = total_min_sim_time / (time_step * steps)
-    config["simulation"]["MINIMIZATION_LOOPS"] = int(MIN_LOOPS)
     LOOPS = total_sim_time / (time_step * steps)
     config["simulation"]["LOOPS"] = int(LOOPS)
-
-    # print(f"gridsize={gridsize}, loops={int(LOOPS)}, steps={steps}")
     
 if __name__ == "__main__":
     path = "configs/default.json"
@@ -239,7 +242,8 @@ if __name__ == "__main__":
             run = int(sys.argv[6])
             save_dir = str(sys.argv[7])
             config["simulation"]["TOTAL_TIME"] = 0.2
-            # set rud_id as seed
+
+            # set run_id as seed
             config["simulation"]["SEED"] = run
             config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}/run_{run}/"
 
@@ -255,7 +259,6 @@ if __name__ == "__main__":
 
             config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}/"
         
-        # config["simulation"]["SAVE_VTK"] = True
         # set parameters to match the validation data from Fu et al.
         config["simulation"]["SHEAR"] = shear
         config["physical"]["GAMMA"] = gamma
@@ -296,18 +299,23 @@ if __name__ == "__main__":
         # 15 micrometer polymer
         config["physical"]["N_MONOMERS"] = 250
         
-        # large box to fit N_monomer=250 polymer
+        # large box to fit N_monomer=250 polymer (15 micrometer)
         config["geometry"]["BOX_Lx"] = 64
         config["geometry"]["BOX_Ly"] = 32
         config["geometry"]["BOX_Lz"] = 32
         config["simulation"]["N_POLYMERS"] = 1
-        # config["simulation"]["N_POLYMERS_FREE"] = 1
 
         config["geometry"]["AGRID"] = 1
         # need to decrease timestep due to large boxsize 
-        # (i.e. large Ma number for LB for high shear rates)
+        # (large Ma number for LB for high velocity)
+        # also because larger polymer needs more timesteps to be stable
         config["simulation"]["TIME_STEP"] = 0.0005
         config["simulation"]["LB_TIME_STEP"] = 0.0005
+
+        # to test
+        config["simulation"]["COMPUTE_POSITIONS"] = False
+        if run==1:
+            config["simulation"]["SAVE_VTK"] = True
         
         if 5000 > shear > 10:
             config["simulation"]["TIME_STEP"] = 0.00025
@@ -383,12 +391,13 @@ if __name__ == "__main__":
         config["simulation"]["SHEAR"] = shear
         config["simulation"]["TOTAL_TIME"] = 0.01
 
-        LJ_strength=18
+        # config["simulation"]["COMPUTE_POSITIONS"] = False
 
         config["simulation"]["N_POLYMERS"] = 1
-        config["simulation"]["MINIMIZATION_STEPS"] = 1000
+        config["simulation"]["MINIMIZATION_STEPS"] = 800
         config["physical"]["k"] = 100
         config["physical"]["N_MONOMERS"] = 250
+        config["simulation"]["SEED"] = 1
         # N_POLYMERS_FREE <= N_POLYMERS
         # config["simulation"]["N_POLYMERS_FREE"] = 5
         config["simulation"]["LB_TIME_STEP"] = 0.001
@@ -402,7 +411,7 @@ if __name__ == "__main__":
         #     config["simulation"]["MINIMIZATION_STEPS"] = 200
 
         add_timeloops_from_gridsize(config)
-        add_dependent_parameters(config, LJ_strength)
+        add_dependent_parameters(config)
         add_polymer_positions(config)
     
     if run_type == "experiment_sphere":
@@ -444,7 +453,7 @@ if __name__ == "__main__":
             config["simulation"]["MINIMIZATION_STEPS"] = 200
 
         add_timeloops_from_gridsize(config)
-        add_dependent_parameters(config, LJ_strength)
+        add_dependent_parameters(config)
         add_polymer_positions(config)
 
     if run_type == "experiment_microcontraction":
@@ -486,7 +495,7 @@ if __name__ == "__main__":
             config["simulation"]["MINIMIZATION_STEPS"] = 200
 
         add_timeloops_from_gridsize(config)
-        add_dependent_parameters(config, LJ_strength)
+        add_dependent_parameters(config)
         add_polymer_positions(config)
 
     lbf, forces, positions, drag_forces = run_simulation(config)
