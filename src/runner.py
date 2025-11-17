@@ -94,10 +94,12 @@ def load_polymer_positions(start_positions):
 
     outdir = "./configs/initial_polymer_positions"
     N_MONOMERS = config["physical"]["N_MONOMERS"]
-    path_to_file = os.path.join(outdir, f"init_positions_{N_MONOMERS}_seed_1.npz")
+    seed = config["simulation"]["SEED"]
+    path_to_file = os.path.join(outdir, f"init_positions_{N_MONOMERS}_seed_{seed}.npz")
     print(f"Read out position file: {path_to_file}")
     data = np.load(path_to_file)
     init_positions = data["positions"]
+    print(f"Shape positions file: {init_positions.shape}")
 
     # subtract first monomer so polymer is normalized to origin
     origin = init_positions[0, 0]                   # (3,)
@@ -106,8 +108,8 @@ def load_polymer_positions(start_positions):
     # broadcast: (1, N_monomers, 3) → (N_POLYMERS, N_monomers, 3)
     positions = shifted + start_positions[:, None, :]  # broadcasting target positions
     config["simulation"]["POSITIONS"] = positions
-    print("Added positions from file")
-
+    print("Added positions with shape:")
+    print(positions.shape)
     return 
 
 def add_polymer_positions(config):
@@ -317,13 +319,17 @@ if __name__ == "__main__":
         if run==1:
             config["simulation"]["SAVE_VTK"] = True
         
-        if 5000 > shear > 10:
+        # if 5000 > shear > 10:
+        #     config["simulation"]["TIME_STEP"] = 0.00025
+        #     config["simulation"]["LB_TIME_STEP"] = 0.00025
+        
+        # if shear >= 5000:
+        #     config["simulation"]["TIME_STEP"] = 0.00025/2
+        #     config["simulation"]["LB_TIME_STEP"] = 0.00025/2
+
+        if shear > 5000:
             config["simulation"]["TIME_STEP"] = 0.00025
             config["simulation"]["LB_TIME_STEP"] = 0.00025
-        
-        if shear >= 5000:
-            config["simulation"]["TIME_STEP"] = 0.00025/2
-            config["simulation"]["LB_TIME_STEP"] = 0.00025/2
 
         config["simulation"]["TETHERED"] = False
         config["simulation"]["TOTAL_TIME"] = 0.3
@@ -331,7 +337,7 @@ if __name__ == "__main__":
         config["simulation"]["MINIMIZATION_STEPS"] = 800
         # might need to increase fene bond for large these large free flowing polymers?
         # config["physical"]["k"] = 10
-        config["physical"]["k"] = 100
+        config["physical"]["k"] = 1000
 
         # increased steps in simulation to save the data (to run for vtk)
         # since otherwise the file will be too big
@@ -362,7 +368,6 @@ if __name__ == "__main__":
             config["simulation"]["stdev_initial_pos"] = stdev_init
             config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/"
 
-        config["simulation"]["COUETTE"] = False
         config["simulation"]["COILED"] = False
         # for recoiling, the experimental data added 60% sucrose, increased viscosity and density
         config["fluid"]["VISC"] = config["fluid"]["VISC"] * 58
@@ -383,24 +388,29 @@ if __name__ == "__main__":
     
     if run_type == "experiment":
         shear = float(sys.argv[2])
-        save_dir = str(sys.argv[3])
+        config["simulation"]["SELF_ASSOCIATE"] = sys.argv[3].lower() == "true"
+        save_dir = str(sys.argv[4])
 
-        config["output"]["DIRECTORY"] = f"./{save_dir}/"
+        if config["simulation"]["SELF_ASSOCIATE"]:
+            config["output"]["DIRECTORY"] = f"./{save_dir}/selfassociation/"
+        else:
+            config["output"]["DIRECTORY"] = f"./{save_dir}/no_selfassociation/"
     
         config["simulation"]["SAVE_VTK"] = True
         config["simulation"]["SHEAR"] = shear
-        config["simulation"]["TOTAL_TIME"] = 0.01
+        config["simulation"]["TOTAL_TIME"] = 0.2
 
-        # config["simulation"]["COMPUTE_POSITIONS"] = False
+        config["simulation"]["COMPUTE_POSITIONS"] = False
 
-        config["simulation"]["N_POLYMERS"] = 1
-        config["simulation"]["MINIMIZATION_STEPS"] = 800
+        config["simulation"]["N_POLYMERS"] = 5
+        config["simulation"]["MINIMIZATION_STEPS"] = 200
         config["physical"]["k"] = 100
-        config["physical"]["N_MONOMERS"] = 250
+        config["physical"]["N_MONOMERS"] = 50
         config["simulation"]["SEED"] = 1
         # N_POLYMERS_FREE <= N_POLYMERS
         # config["simulation"]["N_POLYMERS_FREE"] = 5
         config["simulation"]["LB_TIME_STEP"] = 0.001
+        # config["simulation"]["SELF_ASSOCIATE"] = True
 
         # if config["physical"]["N_MONOMERS"] > 50:
         #     config["simulation"]["MINIMIZATION_STEPS"] = 600

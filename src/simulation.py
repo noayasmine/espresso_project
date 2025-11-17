@@ -10,6 +10,7 @@ import espressomd.shapes
 import espressomd.observables
 import os
 import time
+from collections import defaultdict
 
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
@@ -83,7 +84,58 @@ def compute_tensile_forces(forces_per_particle, N_POLYMERS, N_MONOMERS):
     tensile = np.flip(np.cumsum(np.flip(F, axis=1), axis=1), axis=1)
     return tensile.reshape(-1, 3)
 
-def add_bonds(system, exceeding_ids, fene, type_dictionary, distance):
+def add_tensile_forces_to_vtk(vtk_path, tensile_forces):
+    """
+    Insert tensile force vectors into an existing VTK legacy file produced by Espresso.
+
+    Parameters
+    ----------
+    vtk_path : str
+        Path to the VTK file written by Espresso.
+    tensile_forces : array-like, shape (N, 3)
+        Tensile force vectors, indexed by particle id.
+    """
+
+    # Read the file
+    with open(vtk_path, "r") as f:
+        lines = f.readlines()
+
+    # Find where velocity data ends
+    # After "LOOKUP_TABLE default", there are N lines (one per particle)
+    # We want to insert right after those.
+    new_lines = []
+    i = 0
+    n_particles = None
+
+    while i < len(lines):
+        line = lines[i]
+        new_lines.append(line)
+
+        # Detect POINT_DATA line so we know N
+        if line.startswith("POINT_DATA"):
+            n_particles = int(line.split()[1])
+
+        # Detect the LOOKUP_TABLE for velocity
+        if line.strip() == "LOOKUP_TABLE default":
+            # Skip velocity entries
+            for k in range(n_particles):
+                i += 1
+                new_lines.append(lines[i])
+
+            # Now insert tensile forces
+            new_lines.append("VECTORS tensile_force float\n")
+            for p in range(n_particles):
+                fx, fy, fz = tensile_forces[p]
+                new_lines.append(f"{fx} {fy} {fz}\n")
+
+        i += 1
+
+    # Overwrite file
+    with open(vtk_path, "w") as f:
+        f.writelines(new_lines)
+
+
+def add_bonds_old(system, exceeding_ids, fene, type_dictionary, distance):
     """
     Create FENE bonds between particles that:
       - are within 'distance' (via get_neighbors),
@@ -145,6 +197,92 @@ def add_bonds(system, exceeding_ids, fene, type_dictionary, distance):
     
     return 
 
+from collections import defaultdict
+
+def add_bonds(system, exceeding_ids, fene, type_dictionary, distance, type_to_ids, existing_pairs, degree):
+    """
+    Create FENE bonds between particles that:
+      - are within 'distance' (via get_neighbors),
+      - belong to different polymers (different particle type),
+      - are not already bonded in either direction,
+      - and respect a max-2-bonds-per-particle rule.
+
+    Parameters
+    ----------
+    system : espressomd.System
+    exceeding_ids : array-like of int
+        Particle IDs whose net tensile force exceeded the threshold.
+    fene : object
+        Preconfigured FENE interaction.
+    type_dictionary : dict[int, int]
+        Maps particle id -> particle type (polymer id).
+    distance : float
+        Neighbor cutoff radius.
+    type_to_ids : dict[int, set[int]]
+        Precomputed mapping: type -> set of particle ids.
+    existing_pairs : set[frozenset[int, int]]
+        Global set of existing bonds (unordered pairs). Updated in-place.
+    degree : dict[int, int]
+        Bond count per particle. Updated in-place.
+
+    Returns
+    -------
+    added_pairs : list[tuple[int, int]]
+        List of newly created bonds (pid, pid_neighbor).
+    """
+
+    exc_ids_set = set(int(i) for i in exceeding_ids)
+    print(exc_ids_set)
+    added_pairs = []
+
+
+    for pid in exc_ids_set:
+        # Respect max-2 rule for this particle
+        if degree[pid] >= 3:
+            print(f"Particle {pid} already has three bonds.")
+            continue
+
+        p_handle = system.part.by_id(pid)
+        particle_type = type_dictionary[pid]
+        same_type_ids = type_to_ids[particle_type]
+
+        # Neighbor search
+        neighbor_ids = system.cell_system.get_neighbors(p_handle, distance)
+        neighbor_ids_set = {int(nid) for nid in neighbor_ids}
+
+        # Candidates: neighbors not in same polymer
+        candidates = neighbor_ids_set - same_type_ids
+
+        for pid_neighbor in candidates:
+            # Respect max-2 rule on neighbor as well
+            if degree[pid_neighbor] >= 3:
+                continue
+
+            pair = frozenset((pid, pid_neighbor))
+
+            # if pair already in existing_pairs, there is already a bond
+            # in either direction between these two. skip.
+            if pair in existing_pairs:
+                print(f"This pair {pair} is already bonded")
+                continue
+
+            # add bond
+            print(f"Add bond between {pair}")
+            p_handle_neighbor = system.part.by_id(pid_neighbor)
+            p_handle.add_bond((fene, p_handle_neighbor))
+
+            # update global state
+            existing_pairs.add(pair)
+            degree[pid] += 1
+            degree[pid_neighbor] += 1
+            added_pairs.append((pid, pid_neighbor))
+
+            # if pid now has 2 bonds, don't add more from it
+            if degree[pid] >= 2:
+                break
+
+    return added_pairs
+
 def build_polymers(system, n_monomers, n_polymers, n_polymers_free, start_positions, positions, fene, bond_length, SEED, TETHERED=True, COILED=True, COMPUTE_POSITIONS=True):
     
     # compute positions here only if we are not using precomputed positions
@@ -159,7 +297,7 @@ def build_polymers(system, n_monomers, n_polymers, n_polymers_free, start_positi
         p_previous = None
         first_bead = None
 
-        # Type per polymer, each monomer has unique id
+        # type per polymer, each monomer has unique id
         for i, pos in enumerate(positions[j]):
             p = system.part.add(pos=pos, type=j)
             type_dictionary.update({p.id: j})
@@ -172,8 +310,12 @@ def build_polymers(system, n_monomers, n_polymers, n_polymers_free, start_positi
 
             if TETHERED==True:
                 first_bead.fix = [True, True, True]
+    
+    type_to_ids = defaultdict(set)
+    for pid, ptype in type_dictionary.items():
+        type_to_ids[ptype].add(pid)
 
-    return type_dictionary
+    return type_dictionary, type_to_ids
 
 
 def run_simulation(params):
@@ -196,7 +338,7 @@ def run_simulation(params):
     START_POSITIONS = sim["START_POSITIONS"]
     TETHERED = sim["TETHERED"]
     COILED = sim["COILED"]
-    COUETTE = sim["COUETTE"]
+
     SHEAR = sim["SHEAR"] * 1e-4  # convert to sim units
     save_VTK = sim["SAVE_VTK"]
     minimization_steps = sim["MINIMIZATION_STEPS"]
@@ -224,11 +366,12 @@ def run_simulation(params):
     radius_object = geom.get("RADIUS_OBJECT", 7.5)
 
     VELOCITY = sim["VELOCITY"]
-    outdir = DIRECTORY + f'/vtk_data/'
+    outdir = DIRECTORY + f'vtk_data/'
     
     os.makedirs(DIRECTORY, exist_ok=True)
 
     if save_VTK:
+        logging.info(f"Save vtk files to {outdir}")
         os.makedirs(outdir, exist_ok=True)
 
     MA = (np.sqrt(3) * VELOCITY * LB_TIME_STEP) / AGRID
@@ -294,7 +437,7 @@ def run_simulation(params):
 
     # Polymers
     logging.info("Build Polymer(s).")
-    type_dictionary = build_polymers(system, N_MONOMERS, N_POLYMERS, N_POLYMERS_FREE, START_POSITIONS, POSITIONS, fene, r_0, SEED, \
+    type_dictionary, type_to_ids = build_polymers(system, N_MONOMERS, N_POLYMERS, N_POLYMERS_FREE, START_POSITIONS, POSITIONS, fene, r_0, SEED, \
         TETHERED, COILED, COMPUTE_POSITIONS)
     # Add soft sphere potential between wall and particles
     for particle_type in all_types:
@@ -341,14 +484,9 @@ def run_simulation(params):
     wall_shape_z_up_lb = espressomd.shapes.Wall(normal=[0, 0, 1], dist=AGRID)
     wall_shape_z_down_lb = espressomd.shapes.Wall(normal=[0, 0, -1], dist=-(BOX_Lz - AGRID))
 
-    if COUETTE:
-        logging.info(f"Set LB setup for uncoiling validation (nonzero fluid velocity)")
-        lb_boundary_up = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_up_lb, velocity=[0, 0, 0]))
-        lb_boundary_down = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_down_lb, velocity=[VELOCITY, 0, 0]))
-    if not COUETTE:
-        logging.info("Set LB setup for coiling validation (zero fluid velocity)")
-        lb_boundary_up = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_up_lb, velocity=[0, 0, 0]))
-        lb_boundary_down = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_down_lb, velocity=[0, 0, 0]))
+    logging.info(f"Set LB setup with velocity = {VELOCITY}")
+    lb_boundary_up = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_up_lb, velocity=[0, 0, 0]))
+    lb_boundary_down = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_down_lb, velocity=[VELOCITY, 0, 0]))
 
     # Main simulation loop
     logging.info("Run simulation.")
@@ -357,6 +495,26 @@ def run_simulation(params):
     # drag forces per monomer
     drag_forces_traj = np.empty((int(LOOPS), int(N_POLYMERS * N_MONOMERS), 3), dtype=np.float32)
     tensile_forces_traj = np.empty((int(LOOPS), int(N_POLYMERS * N_MONOMERS), 3), dtype=np.float32)
+    WINDOW = 100
+
+    # Build global view of existing bonds (unordered pairs) + degrees
+    existing_pairs = set()          # frozenset({i, j})
+    degree = defaultdict(int)       # how many bonds each particle already has
+
+    for p in system.part:
+        pid = int(p.id)
+        for _, partner in p.bonds:
+            qid = int(getattr(partner, "id", partner))
+            pair = frozenset((pid, qid))
+            if pair not in existing_pairs:
+                existing_pairs.add(pair)
+                degree[pid] += 1
+                degree[qid] += 1   # we treat bond as undirected, even if stored once
+    
+    print("The degree dict:")
+    print(degree)
+    print("The existing pairs set:")
+    print(existing_pairs)
 
     if save_VTK:
         for i in range(int(LOOPS)):
@@ -364,27 +522,35 @@ def run_simulation(params):
                 np.savez_compressed(os.path.join(DIRECTORY, "init_positions.npz"), positions=accumulator_positions.time_series())
                 print(f"Positions shape: {accumulator_positions.time_series().shape}")
 
+                lbf.write_vtk_boundary(outdir + f"boundary_{i:05d}.vtk")
+
             print(f"step {i + 1} of {int(LOOPS)}", end='\r', flush=True)
             lbf.write_vtk_velocity(outdir + f"velocity_{i:05d}.vtk")
-            lbf.write_vtk_boundary(outdir + f"boundary_{i:05d}.vtk")
+            # lbf.write_vtk_boundary(outdir + f"boundary_{i:05d}.vtk")
             system.part.writevtk(outdir + f"particles_{i:05d}.vtk")
 
             system.integrator.run(STEPS)
 
             drag_forces_per_particle = lb_drag_forces(system, lbf, GAMMA, particle_ids)
             drag_forces_traj[i] = drag_forces_per_particle
+            start = max(0, i - WINDOW + 1)              # inclusive
+            drag_window = drag_forces_traj[start:i+1]    # shape: (window_len, N_particles, 3)
+            drag_avg = drag_window.mean(axis=0)          # shape: (N_particles, 3)
 
-            tensile_forces = compute_tensile_forces(drag_forces_per_particle, N_POLYMERS, N_MONOMERS)
+            tensile_forces = compute_tensile_forces(drag_avg, N_POLYMERS, N_MONOMERS)
             tensile_forces_traj[i] = tensile_forces
+            vtk_file = outdir + f"particles_{i:05d}.vtk"
+            add_tensile_forces_to_vtk(vtk_file, tensile_forces)
+
             net_tensile = np.abs(np.sum(tensile_forces, axis=1))
 
-            if SELF_ASSOCIATE:
-                # boolean mask of monomers exceeding threshold tension 
+            if SELF_ASSOCIATE and i >= WINDOW:
                 exceed_mask = net_tensile > FORCE_THRESHOLD
-                exceeding_ids = particle_ids[exceed_mask]      
+                exceeding_ids = particle_ids[exceed_mask]
                 R_CAPTURE = 2 * a
 
-                added = add_bonds(system, exceeding_ids, fene=fene, type_dictionary=type_dictionary, distance=R_CAPTURE)
+                added = add_bonds(system, exceeding_ids, fene=fene, type_dictionary=type_dictionary, distance=R_CAPTURE,
+                    type_to_ids=type_to_ids, existing_pairs=existing_pairs, degree=degree)
 
     if not save_VTK:
         for i in range(int(LOOPS)):

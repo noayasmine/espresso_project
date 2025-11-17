@@ -22,7 +22,7 @@
     "TETHERED":true,
     "COILED":true,
     "COUETTE":true,
-    "SHEAR": 3000,
+    "SHEAR": 0,
     "FORCE_THRESHOLD": 0.01,
     "SEED": 42,
     "stdev_initial_pos":0.15,
