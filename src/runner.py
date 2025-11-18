@@ -18,6 +18,31 @@ def add_dependent_parameters(config, LJ_strength=18):
     # Compute velocity (in MD units, i.e. 1e2 m/s )
     config["simulation"]["VELOCITY"] = config["simulation"]["SHEAR"] * 1e-4 * (config["geometry"]["BOX_Lz"] - config["geometry"]["AGRID"])
 
+def sample_points_min_dist_2d(n_points, bounds, min_dist, max_attempts=100000):
+    """
+    Sample n_points in 2D within given bounds, with pairwise distance >= min_dist.
+    bounds = ((x_min, x_max), (y_min, y_max))
+    """
+    (x_min, x_max), (y_min, y_max) = bounds
+    pts = []
+    attempts = 0
+
+    while len(pts) < n_points and attempts < max_attempts:
+        attempts += 1
+        x = np.random.uniform(x_min, x_max)
+        y = np.random.uniform(y_min, y_max)
+        p = np.array([x, y])
+
+        # accept if far enough from all existing points
+        if all(np.linalg.norm(p - q) >= min_dist for q in pts):
+            pts.append(p)
+
+    if len(pts) < n_points:
+        raise RuntimeError("Could not place all points with the given min_dist.")
+
+    pts = np.array(pts)
+    return pts[:, 0], pts[:, 1]
+
 def compute_start_positions(config):
     """ Computes positions of first monomers
 
@@ -25,6 +50,7 @@ def compute_start_positions(config):
     start_positions (N_POLYMERS, 3)
     + adds start_positions to json file (config)
     """
+    np.random.seed(config["simulation"]["SEED"])
     N_POLYMERS = config["simulation"]["N_POLYMERS"]
     N_POLYMERS_FREE = config["simulation"]["N_POLYMERS_FREE"]
     a = config["physical"]["a"]
@@ -60,8 +86,13 @@ def compute_start_positions(config):
         random_y = np.array([center_y - spacing / 2, center_y + spacing / 2])
         
     else:
-        random_x = np.random.uniform(AGRID + 2*a, BOX_Lx - (AGRID + 2*a), N_POLYMERS)
-        random_y = np.random.uniform(AGRID + 2*a, BOX_Lx - (AGRID + 2*a), N_POLYMERS)
+        min_dist = 10.0 * a
+
+        # simple uniform box region in xy
+        x_bounds = (AGRID + 2.0 * a, BOX_Lx - (AGRID + 2.0 * a))
+        y_bounds = (AGRID + 2.0 * a, BOX_Ly - (AGRID + 2.0 * a))
+
+        random_x, random_y = sample_points_min_dist_2d(N_POLYMERS, (x_bounds, y_bounds), min_dist)
 
     # place monomers just above the wall
     # place monomers a (above the soft sphere potential)
@@ -402,7 +433,7 @@ if __name__ == "__main__":
 
         config["simulation"]["COMPUTE_POSITIONS"] = False
 
-        config["simulation"]["N_POLYMERS"] = 5
+        config["simulation"]["N_POLYMERS"] = 20
         config["simulation"]["MINIMIZATION_STEPS"] = 200
         config["physical"]["k"] = 100
         config["physical"]["N_MONOMERS"] = 50

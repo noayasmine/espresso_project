@@ -12,4 +12,5 @@ validation_data/
 *.png
 *.log
 *.csv
+slurm-*.out
 validation/

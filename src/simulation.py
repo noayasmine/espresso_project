@@ -72,7 +72,7 @@ def lb_drag_forces(system, lb, gamma, ids):
     # F_drag
     return -gamma * (vel - u)
 
-def compute_tensile_forces(forces_per_particle, N_POLYMERS, N_MONOMERS):
+def compute_tensile_forces_from_drag(forces_per_particle, N_POLYMERS, N_MONOMERS):
     """
     forces_per_particle: (N_POLYMERS*N_MONOMERS, 3) drag forces per monomer
     
@@ -83,6 +83,48 @@ def compute_tensile_forces(forces_per_particle, N_POLYMERS, N_MONOMERS):
     # reverse along monomer axis, cumsum, then flip back -> reverse-cumsum
     tensile = np.flip(np.cumsum(np.flip(F, axis=1), axis=1), axis=1)
     return tensile.reshape(-1, 3)
+
+def compute_tensile_forces_general(total_forces, drag_forces, N_POLYMERS, N_MONOMERS, other_forces=None):
+    """
+    total_forces : (N_POLYMERS*N_MONOMERS, 3) total forces per monomer (from ParticleForces)
+    drag_forces  : (N_POLYMERS*N_MONOMERS, 3) drag forces per monomer (your lb_drag_forces)
+    other_forces : same shape or None (e.g. gravity, wall, etc.)
+
+    Returns:
+      bond_tensions_per_monomer : (N_POLYMERS*N_MONOMERS, 3)
+
+    Convention:
+      For each polymer, we compute bond tensions T[0..N_MONOMERS-2].
+      We store them at monomer index i (bond to i+1).
+      The last monomer's tension is set to 0.
+    """
+    # reshape to (polymers, monomers, 3)
+    TF = total_forces.reshape(int(N_POLYMERS), int(N_MONOMERS), 3)
+    DF = drag_forces.reshape(int(N_POLYMERS), int(N_MONOMERS), 3)
+
+    if other_forces is not None:
+        OF = other_forces.reshape(int(N_POLYMERS), int(N_MONOMERS), 3)
+    else:
+        OF = 0.0
+
+    # residuals R_i = F_tot_i - F_drag_i - F_other_i
+    R = TF - DF - OF   # shape (N_POLYMERS, N_MONOMERS, 3)
+
+    T = np.zeros((int(N_POLYMERS), int(N_MONOMERS), 3))
+
+    # reconstruct tension for each polymer separately
+    for p in range(int(N_POLYMERS)):
+        # bond N-2 (between monomers N-2 and N-1)
+        T[p, N_MONOMERS-2] = -R[p, N_MONOMERS-1]
+
+        # walk backward along the chain: i = N-2, ..., 1
+        for i in range(N_MONOMERS-2, 0, -1):
+            T[p, i-1] = T[p, i] + R[p, i]
+
+        # last monomer has no bond downstream, keep T[p, N_MONOMERS-1] = 0
+
+    return T.reshape(-1, 3)
+
 
 def add_tensile_forces_to_vtk(vtk_path, tensile_forces):
     """
@@ -495,6 +537,7 @@ def run_simulation(params):
     # drag forces per monomer
     drag_forces_traj = np.empty((int(LOOPS), int(N_POLYMERS * N_MONOMERS), 3), dtype=np.float32)
     tensile_forces_traj = np.empty((int(LOOPS), int(N_POLYMERS * N_MONOMERS), 3), dtype=np.float32)
+    total_forces_traj = np.empty((int(LOOPS), int(N_POLYMERS * N_MONOMERS), 3), dtype=np.float32)
     WINDOW = 100
 
     # Build global view of existing bonds (unordered pairs) + degrees
@@ -537,12 +580,21 @@ def run_simulation(params):
             drag_window = drag_forces_traj[start:i+1]    # shape: (window_len, N_particles, 3)
             drag_avg = drag_window.mean(axis=0)          # shape: (N_particles, 3)
 
-            tensile_forces = compute_tensile_forces(drag_avg, N_POLYMERS, N_MONOMERS)
+            total_forces_per_particle = espressomd.observables.ParticleForces(ids=particle_ids).calculate()
+            total_forces_traj[i] = total_forces_per_particle
+            total_window = total_forces_traj[start:i+1]        # (window_len, N_particles, 3)
+            total_avg   = total_window.mean(axis=0) 
+
+            tensile_forces = compute_tensile_forces_general(total_avg, drag_avg, N_POLYMERS, N_MONOMERS)
             tensile_forces_traj[i] = tensile_forces
+
+            # tensile_forces = compute_tensile_forces(drag_avg, N_POLYMERS, N_MONOMERS)
+            # tensile_forces_traj[i] = tensile_forces
             vtk_file = outdir + f"particles_{i:05d}.vtk"
             add_tensile_forces_to_vtk(vtk_file, tensile_forces)
 
-            net_tensile = np.abs(np.sum(tensile_forces, axis=1))
+            # net_tensile = np.abs(np.sum(tensile_forces, axis=1))
+            net_tensile = np.linalg.norm(tensile_forces, axis=1)
 
             if SELF_ASSOCIATE and i >= WINDOW:
                 exceed_mask = net_tensile > FORCE_THRESHOLD
