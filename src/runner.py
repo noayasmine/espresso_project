@@ -429,7 +429,7 @@ if __name__ == "__main__":
     
         config["simulation"]["SAVE_VTK"] = True
         config["simulation"]["SHEAR"] = shear
-        config["simulation"]["TOTAL_TIME"] = 0.2
+        config["simulation"]["TOTAL_TIME"] = 0.05
 
         config["simulation"]["COMPUTE_POSITIONS"] = False
 

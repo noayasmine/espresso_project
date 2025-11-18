@@ -84,7 +84,7 @@ def compute_tensile_forces_from_drag(forces_per_particle, N_POLYMERS, N_MONOMERS
     tensile = np.flip(np.cumsum(np.flip(F, axis=1), axis=1), axis=1)
     return tensile.reshape(-1, 3)
 
-def compute_tensile_forces_general(total_forces, drag_forces, N_POLYMERS, N_MONOMERS, other_forces=None):
+def compute_tensile_forces_general_old(total_forces, drag_forces, N_POLYMERS, N_MONOMERS, other_forces=None):
     """
     total_forces : (N_POLYMERS*N_MONOMERS, 3) total forces per monomer (from ParticleForces)
     drag_forces  : (N_POLYMERS*N_MONOMERS, 3) drag forces per monomer (your lb_drag_forces)
@@ -124,6 +124,86 @@ def compute_tensile_forces_general(total_forces, drag_forces, N_POLYMERS, N_MONO
         # last monomer has no bond downstream, keep T[p, N_MONOMERS-1] = 0
 
     return T.reshape(-1, 3)
+
+
+def compute_tensile_forces_general(total_forces,drag_forces,N_POLYMERS,N_MONOMERS,other_forces=None):
+    """
+    Approximate tensile forces per monomer as:
+
+        F_tensile_i = F_total_i - F_drag_i - F_other_i
+
+    Parameters
+    ----------
+    total_forces : (N_POLYMERS*N_MONOMERS, 3)
+        Total forces per monomer (from ParticleForces).
+    drag_forces  : (N_POLYMERS*N_MONOMERS, 3)
+        Drag forces per monomer (lb_drag_forces).
+    other_forces : same shape or None
+        Any additional known external forces (e.g. gravity, walls).
+
+    Returns
+    -------
+    tensile_forces_flat : (N_POLYMERS*N_MONOMERS, 3)
+        Approximate tensile forces per monomer.
+    """
+    # reshape to (polymers, monomers, 3) if you like, though not strictly needed
+    TF = total_forces.reshape(int(N_POLYMERS), int(N_MONOMERS), 3)
+    DF = drag_forces.reshape(int(N_POLYMERS), int(N_MONOMERS), 3)
+
+    if other_forces is not None:
+        OF = other_forces.reshape(int(N_POLYMERS), int(N_MONOMERS), 3)
+    else:
+        OF = 0.0
+
+    # F_tensile ≈ F_total - F_drag - F_other
+    T = TF - DF - OF     # shape: (N_POLYMERS, N_MONOMERS, 3)
+
+    return T.reshape(-1, 3)
+
+def compute_fene_tensile_forces(positions,N_POLYMERS,N_MONOMERS,k,r_0,d_r_max):
+    """
+    Compute vector FENE tensile forces and return them per monomer.
+
+    Returns
+    -------
+    tensile_forces_flat : (N_POLYMERS*N_MONOMERS, 3)
+        Vector tensile forces per monomer.
+        Monomer i gets the force from the bond (i -> i+1).
+        Last monomer in each polymer gets [0,0,0].
+    """
+    # reshape positions
+    pos = positions.reshape(N_POLYMERS, N_MONOMERS, 3)
+
+    # bond vectors r_vec[p,i] = pos[p,i+1] - pos[p,i]
+    r_vec = pos[:, 1:, :] - pos[:, :-1, :]        # (P, M-1, 3)
+
+    # bond lengths
+    r = np.linalg.norm(r_vec, axis=-1)            # (P, M-1)
+    x = r - r_0                                   # overextension
+
+    # scalar FENE tension (zero if compressed or invalid)
+    F_mag = np.zeros_like(r)
+    mask = (x > 0) & (x < d_r_max)
+    xv = x[mask]
+    F_mag[mask] = k * xv / (1.0 - (xv / d_r_max)**2)
+
+    # unit vectors
+    r_expanded = r[:, :, None]                    # (P, M-1, 1)
+    t_hat = np.zeros_like(r_vec)
+    nonzero = r > 0
+    t_hat[nonzero] = r_vec[nonzero] / r_expanded[nonzero]
+
+    # vector tensile forces on monomer i from bond (i→i+1)
+    F_vec_bonds = F_mag[..., None] * t_hat        # (P, M-1, 3)
+
+    # build per-monomer forces (last monomer has zero force)
+    tensile = np.zeros((N_POLYMERS, N_MONOMERS, 3))
+    tensile[:, :-1, :] = F_vec_bonds              # assign bond-force to monomer i
+
+    # flatten
+    tensile_flat = tensile.reshape(-1, 3)
+
+    return tensile_flat
 
 
 def add_tensile_forces_to_vtk(vtk_path, tensile_forces):
@@ -175,7 +255,6 @@ def add_tensile_forces_to_vtk(vtk_path, tensile_forces):
     # Overwrite file
     with open(vtk_path, "w") as f:
         f.writelines(new_lines)
-
 
 def add_bonds_old(system, exceeding_ids, fene, type_dictionary, distance):
     """
@@ -239,8 +318,6 @@ def add_bonds_old(system, exceeding_ids, fene, type_dictionary, distance):
     
     return 
 
-from collections import defaultdict
-
 def add_bonds(system, exceeding_ids, fene, type_dictionary, distance, type_to_ids, existing_pairs, degree):
     """
     Create FENE bonds between particles that:
@@ -277,8 +354,8 @@ def add_bonds(system, exceeding_ids, fene, type_dictionary, distance, type_to_id
     print(exc_ids_set)
     added_pairs = []
 
-
     for pid in exc_ids_set:
+        print(f"{pid} exceeded threshold")
         # Respect max-2 rule for this particle
         if degree[pid] >= 3:
             print(f"Particle {pid} already has three bonds.")
@@ -577,24 +654,33 @@ def run_simulation(params):
             drag_forces_per_particle = lb_drag_forces(system, lbf, GAMMA, particle_ids)
             drag_forces_traj[i] = drag_forces_per_particle
             start = max(0, i - WINDOW + 1)              # inclusive
+
+            ###### computing tensile from total - cumulative drag force ######
             drag_window = drag_forces_traj[start:i+1]    # shape: (window_len, N_particles, 3)
             drag_avg = drag_window.mean(axis=0)          # shape: (N_particles, 3)
-
             total_forces_per_particle = espressomd.observables.ParticleForces(ids=particle_ids).calculate()
             total_forces_traj[i] = total_forces_per_particle
             total_window = total_forces_traj[start:i+1]        # (window_len, N_particles, 3)
             total_avg   = total_window.mean(axis=0) 
-
             tensile_forces = compute_tensile_forces_general(total_avg, drag_avg, N_POLYMERS, N_MONOMERS)
             tensile_forces_traj[i] = tensile_forces
+            tensile_window = tensile_forces_traj[start:i+1]
+            tensile_moving_avg = tensile_window.mean(axis=0)
+            ######
 
-            # tensile_forces = compute_tensile_forces(drag_avg, N_POLYMERS, N_MONOMERS)
-            # tensile_forces_traj[i] = tensile_forces
+            ###### compute tensile forces from the fene over extension ######
+            # positions = espressomd.observables.ParticlePositions(ids=particle_ids).calculate()
+            # tensile_forces = compute_fene_tensile_forces(positions,N_POLYMERS,N_MONOMERS,k=k,r_0=r_0,d_r_max=d_r_max)
+            # total_forces_traj[i] = tensile_forces
+            # start = max(0, i - WINDOW + 1)    
+            # tensile_window = tensile_forces_traj[start:i+1]
+            # tensile_moving_avg = tensile_window.mean(axis=0)
+            #######
+
             vtk_file = outdir + f"particles_{i:05d}.vtk"
-            add_tensile_forces_to_vtk(vtk_file, tensile_forces)
+            add_tensile_forces_to_vtk(vtk_file, tensile_moving_avg)
 
-            # net_tensile = np.abs(np.sum(tensile_forces, axis=1))
-            net_tensile = np.linalg.norm(tensile_forces, axis=1)
+            net_tensile = np.linalg.norm(tensile_moving_avg, axis=1)
 
             if SELF_ASSOCIATE and i >= WINDOW:
                 exceed_mask = net_tensile > FORCE_THRESHOLD
