@@ -84,48 +84,6 @@ def compute_tensile_forces_from_drag(forces_per_particle, N_POLYMERS, N_MONOMERS
     tensile = np.flip(np.cumsum(np.flip(F, axis=1), axis=1), axis=1)
     return tensile.reshape(-1, 3)
 
-def compute_tensile_forces_general_old(total_forces, drag_forces, N_POLYMERS, N_MONOMERS, other_forces=None):
-    """
-    total_forces : (N_POLYMERS*N_MONOMERS, 3) total forces per monomer (from ParticleForces)
-    drag_forces  : (N_POLYMERS*N_MONOMERS, 3) drag forces per monomer (your lb_drag_forces)
-    other_forces : same shape or None (e.g. gravity, wall, etc.)
-
-    Returns:
-      bond_tensions_per_monomer : (N_POLYMERS*N_MONOMERS, 3)
-
-    Convention:
-      For each polymer, we compute bond tensions T[0..N_MONOMERS-2].
-      We store them at monomer index i (bond to i+1).
-      The last monomer's tension is set to 0.
-    """
-    # reshape to (polymers, monomers, 3)
-    TF = total_forces.reshape(int(N_POLYMERS), int(N_MONOMERS), 3)
-    DF = drag_forces.reshape(int(N_POLYMERS), int(N_MONOMERS), 3)
-
-    if other_forces is not None:
-        OF = other_forces.reshape(int(N_POLYMERS), int(N_MONOMERS), 3)
-    else:
-        OF = 0.0
-
-    # residuals R_i = F_tot_i - F_drag_i - F_other_i
-    R = TF - DF - OF   # shape (N_POLYMERS, N_MONOMERS, 3)
-
-    T = np.zeros((int(N_POLYMERS), int(N_MONOMERS), 3))
-
-    # reconstruct tension for each polymer separately
-    for p in range(int(N_POLYMERS)):
-        # bond N-2 (between monomers N-2 and N-1)
-        T[p, N_MONOMERS-2] = -R[p, N_MONOMERS-1]
-
-        # walk backward along the chain: i = N-2, ..., 1
-        for i in range(N_MONOMERS-2, 0, -1):
-            T[p, i-1] = T[p, i] + R[p, i]
-
-        # last monomer has no bond downstream, keep T[p, N_MONOMERS-1] = 0
-
-    return T.reshape(-1, 3)
-
-
 def compute_tensile_forces_general(total_forces,drag_forces,N_POLYMERS,N_MONOMERS,other_forces=None):
     """
     Approximate tensile forces per monomer as:
@@ -205,6 +163,316 @@ def compute_fene_tensile_forces(positions,N_POLYMERS,N_MONOMERS,k,r_0,d_r_max):
 
     return tensile_flat
 
+def compute_tensile_from_total_forces(system,total_forces,drag_forces,positions,particle_ids,\
+        N_POLYMERS,N_MONOMERS,epsilon_LJ,sigma_LJ,neighbor_distance):
+    """
+    Approximate tensile force along the downstream bond at each monomer
+    by stripping off LJ and drag contributions from the *total* MD force.
+
+    Parameters
+    ----------
+    system : espressomd.System
+        The running ESPResSo system (used for neighbor search).
+    total_forces : (N_POLYMERS*N_MONOMERS, 3) array
+        Total force per particle (ESPResSo's particle.f, flattened in contour order).
+    drag_forces : (N_POLYMERS*N_MONOMERS, 3) array
+        Drag forces per particle (e.g. from lb_drag_forces), same flattening.
+    positions : (N_POLYMERS*N_MONOMERS, 3) array
+        Positions in contour order (same as you already have).
+    particle_ids : (N_POLYMERS*N_MONOMERS,) array-like of int
+        ESPResSo particle ids corresponding to the flattened ordering.
+    N_POLYMERS, N_MONOMERS : int
+        Number of polymers and monomers per polymer.
+    epsilon_LJ, sigma_LJ : float
+        LJ parameters in the potential:
+        U = 4*epsilon * [ (sigma/r)^12 - (sigma/r)^6 ] + U_shift
+    neighbor_distance : float
+        Cutoff distance for LJ neighbors (e.g. 6*a).
+
+    Returns
+    -------
+    tensile_flat : (N_POLYMERS*N_MONOMERS, 3) array
+        Vector tensile force per monomer, where for monomer i in each polymer
+        (except the last) we store the tension through bond i -> i+1.
+        Last monomer in each polymer is set to zero.
+    """
+
+    P = int(N_POLYMERS)
+    M = int(N_MONOMERS)
+
+    total_forces = np.asarray(total_forces, dtype=float)
+    drag_forces  = np.asarray(drag_forces, dtype=float)
+    positions    = np.asarray(positions, dtype=float)
+    particle_ids = np.asarray(particle_ids, dtype=int)
+
+    assert total_forces.shape == (P*M, 3)
+    assert drag_forces.shape  == (P*M, 3)
+    assert positions.shape    == (P*M, 3)
+    assert particle_ids.shape == (P*M,)
+
+    # Map ESPResSo particle id -> flat index
+    id_to_flat = {int(pid): idx for idx, pid in enumerate(particle_ids)}
+
+    tensile = np.zeros((P*M, 3), dtype=float)
+
+    # Helper: LJ force magnitude as function of r
+    def lj_force_scalar(r):
+        """
+        Return scalar prefactor for F_LJ = f(r) * (r_vec / r).
+        This is -dU/dr for the standard 12-6 LJ potential (no shift in force).
+        """
+        inv_r = 1.0 / r
+        sr = sigma_LJ * inv_r
+        sr2 = sr * sr
+        sr6 = sr2**3
+        sr12 = sr6 * sr6
+        # F_r = 24 epsilon [ 2 (sigma^12 / r^13) - (sigma^6 / r^7) ]
+        #     = 24 epsilon [ 2 sr^12 - sr^6 ] / r
+        return 24.0 * epsilon_LJ * (2.0 * sr12 - sr6) * inv_r
+
+    # Loop polymers and monomers
+    for p in range(P):
+        for m in range(M - 1):  # last monomer has no downstream bond
+            flat_idx = p*M + m
+            flat_idx_down = p*M + (m + 1)
+
+            # Bond direction i -> i+1
+            bond_vec = positions[flat_idx_down] - positions[flat_idx]
+            norm_bond = np.linalg.norm(bond_vec)
+            if norm_bond == 0.0:
+                # Degenerate, skip
+                continue
+
+            t_hat = bond_vec / norm_bond
+
+            # Total force and drag force on this particle
+            F_tot  = total_forces[flat_idx]
+            F_drag = drag_forces[flat_idx]
+
+            # Sum LJ forces from neighbors within neighbor_distance
+            pid = int(particle_ids[flat_idx])
+            p_handle = system.part.by_id(pid)
+            neighbor_ids = system.cell_system.get_neighbors(p_handle, neighbor_distance)
+            # We use a set just as you did (in case of duplicates)
+            neighbor_ids_set = {int(nid) for nid in neighbor_ids}
+
+            F_LJ_sum = np.zeros(3, dtype=float)
+
+            for nid in neighbor_ids_set:
+                # Skip self just in case
+                if nid == pid:
+                    continue
+
+                # Map neighbor id to flat index (only if it is in our list)
+                j_flat = id_to_flat.get(nid, None)
+                if j_flat is None:
+                    # Neighbor not in our tracked particle_ids (e.g. other species)
+                    continue
+
+                r_vec = positions[j_flat] - positions[flat_idx]
+                r = np.linalg.norm(r_vec)
+                if r == 0.0:
+                    continue
+
+                # LJ force from neighbor j on i
+                f_scalar = lj_force_scalar(r)
+                F_ij_LJ = f_scalar * (r_vec / r)
+                F_LJ_sum += F_ij_LJ
+
+            # Projections along bond direction
+            proj_tot  = np.dot(F_tot, t_hat)
+            proj_LJ   = np.dot(F_LJ_sum, t_hat)
+            proj_drag = np.dot(F_drag, t_hat)
+
+            # Remove LJ and drag contributions to isolate FENE tension along this bond
+            T_scalar = proj_tot - proj_LJ - proj_drag
+
+            tensile[flat_idx] = T_scalar * t_hat
+
+        # last monomer of polymer p stays zero
+
+    return tensile
+
+def compute_tensile_forces_along_chain(drag_forces, positions, N_POLYMERS, N_MONOMERS):
+    """
+    Compute tensile forces per monomer by summing downstream drag forces
+    projected along the local chain direction at each monomer.
+
+    Parameters
+    ----------
+    drag_forces : (N_POLYMERS*N_MONOMERS, 3)
+        Drag forces per monomer (from lb_drag_forces).
+    positions   : (N_POLYMERS*N_MONOMERS, 3)
+        Monomer positions in contour order.
+    N_POLYMERS  : int
+    N_MONOMERS  : int
+
+    Returns
+    -------
+    tensile_flat : (N_POLYMERS*N_MONOMERS, 3)
+        Vector tensile force per monomer.
+        For monomer i = 0..M-2 of each polymer:
+          - Local tangent is bond(i -> i+1).
+          - T_i corresponds to tension carried through that bond:
+              T_i = sum_{j=i+1..M-1} F_drag_j projected onto bond(i -> i+1).
+        For monomer i = M-1 (free end):
+          T_{M-1} = 0.
+    """
+    P = int(N_POLYMERS)
+    M = int(N_MONOMERS)
+
+    DF = drag_forces.reshape(P, M, 3)
+    pos = positions.reshape(P, M, 3)
+
+    tensile = np.zeros((P, M, 3))
+
+    for p in range(P):
+        # i = 0 .. M-2: tension through bond i -> i+1
+        for i in range(0, M - 1):
+            # Local chain direction from monomer i to i+1
+            bond_vec = pos[p, i+1] - pos[p, i]
+            norm_bond = np.linalg.norm(bond_vec)
+            if norm_bond == 0.0:
+                # Degenerate case: no well-defined direction
+                continue
+
+            t_hat = bond_vec / norm_bond
+
+            # Sum downstream drag projected onto t_hat
+            # j = i+1 .. M-1
+            scalar_tension = 0.0
+            for j in range(i + 1, M):
+                scalar_tension += np.dot(DF[p, j], t_hat)
+
+            tensile[p, i] = scalar_tension * t_hat
+
+        # monomer M-1 stays zero (free end)
+
+    return tensile.reshape(-1, 3)
+
+def compute_tensile_forces_tree(drag_forces,positions,existing_pairs,N_POLYMERS,N_MONOMERS):
+    """
+    Compute tensile forces per monomer along polymer backbones,
+    accounting for crosslinks, assuming the bond network is a tree
+    (no cycles) and each monomer has at most one extra crosslink.
+
+    Monomer ids: 0 .. P*M-1
+      - Polymer p: ids [p*M, p*M + M-1]
+      - p*M + 0   : tether (root)
+      - p*M + M-1 : free (zero contour tension by definition)
+
+    Output convention (matches your original function idea):
+      For monomer pid = p*M + i:
+        - 0 <= i < M-1:
+            tensile[pid] = tension in bond (pid -> pid+1),
+                          where that bond tension comes from the
+                          downstream subtree drag projected along the
+                          bond direction.
+        - i = M-1:
+            tensile[pid] = 0 (free end).
+    """
+    drag_forces = np.asarray(drag_forces, dtype=float)
+    positions   = np.asarray(positions,   dtype=float)
+
+    N = drag_forces.shape[0]
+    P = int(N_POLYMERS)
+    M = int(N_MONOMERS)
+
+    # 1. Build adjacency list from existing_pairs
+    adj = defaultdict(list)
+    for pair in existing_pairs:
+        i, j = tuple(pair)
+        if i == j:
+            continue
+        adj[i].append(j)
+        adj[j].append(i)
+
+    # 2. Build parent/children tree(s) rooted at each tether
+    parent   = np.full(N, -1, dtype=int)
+    children = [[] for _ in range(N)]
+    order    = []  # visitation order for later post-order processing
+
+    # Each polymer tether is a root: pid_root = p*M + 0
+    for p_idx in range(P):
+        root = p_idx * M
+        if parent[root] != -1:
+            # Already visited as part of another connected component
+            continue
+
+        # Iterative DFS from this root
+        stack = [root]
+        parent[root] = root  # mark root as its own parent
+
+        while stack:
+            node = stack.pop()
+            order.append(node)
+
+            for neigh in adj[node]:
+                if parent[neigh] == -1:  # not visited yet
+                    parent[neigh] = node
+                    children[node].append(neigh)
+                    stack.append(neigh)
+
+    # 3. Post-order pass to compute subtree forces for each node
+    subtree_force = np.zeros_like(drag_forces)
+
+    for node in reversed(order):
+        # Start with local drag
+        total = drag_forces[node].copy()
+        # Add contributions from children
+        for ch in children[node]:
+            total += subtree_force[ch]
+        subtree_force[node] = total
+
+    # 4. Compute bond tension for each parent->child edge
+    # Store in a dict keyed by (parent, child)
+    edge_tension = {}
+
+    for parent_node in range(N):
+        for ch in children[parent_node]:
+            a = parent_node
+            b = ch
+
+            bond_vec = positions[b] - positions[a]
+            norm = np.linalg.norm(bond_vec)
+            if norm == 0.0:
+                continue
+            t_hat = bond_vec / norm
+
+            # Downstream drag is subtree_force of the child
+            scalar_T = np.dot(subtree_force[b], t_hat)
+            T_vec = scalar_T * t_hat
+
+            edge_tension[(a, b)] = T_vec  # oriented a -> b
+
+    # 5. Map bond tensions to per-monomer contour tension
+    tensile = np.zeros_like(drag_forces)
+
+    for p_idx in range(P):
+        base = p_idx * M
+        # Monomer i gets tension from bond (i -> i+1)
+        for i in range(M - 1):
+            a = base + i
+            b = base + i + 1
+
+            # Because of crosslinks, the parent-child orientation
+            # might be either a->b or b->a in the tree.
+            if (a, b) in edge_tension:
+                T_ab = edge_tension[(a, b)]
+            elif (b, a) in edge_tension:
+                # stored as b -> a, but we want a -> b
+                T_ab = -edge_tension[(b, a)]
+            else:
+                # No bond between a and b (should not happen if all contour
+                # bonds are in existing_pairs); leave as zero.
+                continue
+
+            tensile[a] = T_ab
+
+        # Free end: contour tension = 0 by definition
+        tensile[base + (M - 1)] = 0.0
+
+    return tensile
 
 def add_tensile_forces_to_vtk(vtk_path, tensile_forces):
     """
@@ -256,68 +524,6 @@ def add_tensile_forces_to_vtk(vtk_path, tensile_forces):
     with open(vtk_path, "w") as f:
         f.writelines(new_lines)
 
-def add_bonds_old(system, exceeding_ids, fene, type_dictionary, distance):
-    """
-    Create FENE bonds between particles that:
-      - are within 'distance' (via get_neighbors),
-      - and have different particle ids (not same polymer).
-
-    Parameters
-    exceeding_ids : array-like of int
-        Particle IDs whose net tensile force exceeded the threshold.
-    fene : object
-        Preconfigured FENE interaction (e.g., espressomd.interactions.FeneBond(...)).
-    distance : float
-        Neighbor cutoff radius.
-
-    Returns
-    added_pairs : list[tuple[int, int]]
-    """
-
-    # set of ids that exceed the tension threshold
-    exc_ids_set  = set(exceeding_ids)
-    # print(f"Ids that exceed tension threshold:{exc_ids_set}")
-
-    for pid in exc_ids_set:
-        # get particle handle from id
-        p_handle = system.part.by_id(pid)
-
-        # print(p_handle)
-        neighbor_ids = system.cell_system.get_neighbors(p_handle, distance)
-        neighbor_ids_set = set(neighbor_ids)
-        # print(pid, p_handle.bonds)
-
-        # check to which particles this pid is already bonded
-        bonded_ids = set([int(getattr(partner, "id", partner)) for _, partner in p_handle.bonds])
-        # print(f"Already bonded ids set: {bonded_ids}")
-        # if particle already has two bonds (i.e. neighboring monomer + self-association bond)
-        # do NOT add more bonds
-        if len(bonded_ids) >= 2: 
-            print(f"Particle {pid} is already bonded")
-            continue
-        # print(f"Already bonded ids set: {bonded_ids}")
-        # check for all particles with the same type
-        particle_type = type_dictionary[pid]
-        # print(f"particle type {particle_type}")
-
-        particles_same_type = set(system.part.select(type=particle_type).id)
-
-        # particles_same_type = set(system.part.select(type=particle_type).id)
-        # print(f"Same type ids: {particles_same_type}")
-
-        new_bond_ids = neighbor_ids_set - bonded_ids - particles_same_type
-        # print(f"New bonds for: {new_bond_ids}")
-        
-        for pid_neighbor in new_bond_ids:
-            # print(f"Adding bond between {pid} and {pid_neighbor}")
-            p_handle_neighbor = system.part.by_id(pid_neighbor)
-            # Check if this pid is not already bonded to this particle (other way)
-            if pid not in set([int(getattr(partner, "id", partner)) for _, partner in p_handle_neighbor.bonds]):
-                p_handle.add_bond((fene, p_handle_neighbor))
-                print(f"Add bond {pid} and {pid_neighbor}")
-    
-    return 
-
 def add_bonds(system, exceeding_ids, fene, type_dictionary, distance, type_to_ids, existing_pairs, degree):
     """
     Create FENE bonds between particles that:
@@ -351,11 +557,11 @@ def add_bonds(system, exceeding_ids, fene, type_dictionary, distance, type_to_id
     """
 
     exc_ids_set = set(int(i) for i in exceeding_ids)
-    print(exc_ids_set)
+    print(f"exceeding ids: {exc_ids_set}")
     added_pairs = []
 
     for pid in exc_ids_set:
-        print(f"{pid} exceeded threshold")
+        # print(f"{pid} exceeded threshold")
         # Respect max-2 rule for this particle
         if degree[pid] >= 3:
             print(f"Particle {pid} already has three bonds.")
@@ -400,6 +606,7 @@ def add_bonds(system, exceeding_ids, fene, type_dictionary, distance, type_to_id
             if degree[pid] >= 2:
                 break
 
+    print(f"Added pairs:{added_pairs}")
     return added_pairs
 
 def build_polymers(system, n_monomers, n_polymers, n_polymers_free, start_positions, positions, fene, bond_length, SEED, TETHERED=True, COILED=True, COMPUTE_POSITIONS=True):
@@ -435,7 +642,6 @@ def build_polymers(system, n_monomers, n_polymers, n_polymers_free, start_positi
         type_to_ids[ptype].add(pid)
 
     return type_dictionary, type_to_ids
-
 
 def run_simulation(params):
     # unpack from structured config
@@ -615,7 +821,7 @@ def run_simulation(params):
     drag_forces_traj = np.empty((int(LOOPS), int(N_POLYMERS * N_MONOMERS), 3), dtype=np.float32)
     tensile_forces_traj = np.empty((int(LOOPS), int(N_POLYMERS * N_MONOMERS), 3), dtype=np.float32)
     total_forces_traj = np.empty((int(LOOPS), int(N_POLYMERS * N_MONOMERS), 3), dtype=np.float32)
-    WINDOW = 100
+    WINDOW = 10
 
     # Build global view of existing bonds (unordered pairs) + degrees
     existing_pairs = set()          # frozenset({i, j})
@@ -656,16 +862,16 @@ def run_simulation(params):
             start = max(0, i - WINDOW + 1)              # inclusive
 
             ###### computing tensile from total - cumulative drag force ######
-            drag_window = drag_forces_traj[start:i+1]    # shape: (window_len, N_particles, 3)
-            drag_avg = drag_window.mean(axis=0)          # shape: (N_particles, 3)
+            # drag_window = drag_forces_traj[start:i+1]    # shape: (window_len, N_particles, 3)
+            # drag_avg = drag_window.mean(axis=0)          # shape: (N_particles, 3)
             total_forces_per_particle = espressomd.observables.ParticleForces(ids=particle_ids).calculate()
             total_forces_traj[i] = total_forces_per_particle
             total_window = total_forces_traj[start:i+1]        # (window_len, N_particles, 3)
             total_avg   = total_window.mean(axis=0) 
-            tensile_forces = compute_tensile_forces_general(total_avg, drag_avg, N_POLYMERS, N_MONOMERS)
-            tensile_forces_traj[i] = tensile_forces
-            tensile_window = tensile_forces_traj[start:i+1]
-            tensile_moving_avg = tensile_window.mean(axis=0)
+            # tensile_forces = compute_tensile_forces_general(total_avg, drag_avg, N_POLYMERS, N_MONOMERS)
+            # tensile_forces_traj[i] = tensile_forces
+            # tensile_window = tensile_forces_traj[start:i+1]
+            # tensile_moving_avg = tensile_window.mean(axis=0)
             ######
 
             ###### compute tensile forces from the fene over extension ######
@@ -676,6 +882,17 @@ def run_simulation(params):
             # tensile_window = tensile_forces_traj[start:i+1]
             # tensile_moving_avg = tensile_window.mean(axis=0)
             #######
+
+            drag_window = drag_forces_traj[start:i+1]    # shape: (window_len, N_particles, 3)
+            drag_avg = drag_window.mean(axis=0)          # shape: (N_particles, 3)
+            positions = espressomd.observables.ParticlePositions(ids=particle_ids).calculate()
+            # tensile_forces = compute_tensile_forces_along_chain(drag_avg,positions,N_POLYMERS,N_MONOMERS)
+            # tensile_forces = compute_tensile_forces_tree(drag_avg,positions,existing_pairs,N_POLYMERS,N_MONOMERS)
+            tensile_forces = compute_tensile_from_total_forces(system,total_avg,drag_avg,positions,particle_ids,\
+                N_POLYMERS,N_MONOMERS,epsilon,sigma,neighbor_distance=cutoff)
+            tensile_forces_traj[i] = tensile_forces
+            tensile_window = tensile_forces_traj[start:i+1]
+            tensile_moving_avg = tensile_window.mean(axis=0)
 
             vtk_file = outdir + f"particles_{i:05d}.vtk"
             add_tensile_forces_to_vtk(vtk_file, tensile_moving_avg)

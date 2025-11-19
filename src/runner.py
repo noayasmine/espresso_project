@@ -457,25 +457,33 @@ if __name__ == "__main__":
     
     if run_type == "experiment_sphere":
         shear = float(sys.argv[2])
-        save_dir = str(sys.argv[3])
+        config["simulation"]["SELF_ASSOCIATE"] = sys.argv[3].lower() == "true"
+        save_dir = str(sys.argv[4])
 
-        config["output"]["DIRECTORY"] = f"./{save_dir}/"
+        print("Run simulation with sphere")
+
+        if config["simulation"]["SELF_ASSOCIATE"]:
+            config["output"]["DIRECTORY"] = f"./{save_dir}/selfassociation/"
+        else:
+            config["output"]["DIRECTORY"] = f"./{save_dir}/no_selfassociation/"
     
         config["simulation"]["SAVE_VTK"] = True
         config["simulation"]["SHEAR"] = shear
         config["simulation"]["TOTAL_TIME"] = 0.05
+        config["simulation"]["COMPUTE_POSITIONS"] = False
+        config["simulation"]["SEED"] = 42
 
         LJ_strength=18
 
-        config["simulation"]["N_POLYMERS"] = 10
+        config["simulation"]["N_POLYMERS"] = 30
         # config["simulation"]["N_POLYMERS"] = 1
         config["geometry"]["BOX_Lx"] = 100
         config["geometry"]["BOX_Ly"] = 50
         config["geometry"]["BOX_Lz"] = 30
         config["geometry"]["SPHERE"] = True
         config["physical"]["k"] = 100
-        # config["physical"]["N_MONOMERS"] = 120
-        config["physical"]["N_MONOMERS"] = 50
+        config["physical"]["N_MONOMERS"] = 120
+        # config["physical"]["N_MONOMERS"] = 50
         # N_POLYMERS_FREE <= N_POLYMERS
         # config["simulation"]["N_POLYMERS_FREE"] = 20
         # config["simulation"]["DISTRIBUTION"] = "NORMAL"
@@ -492,9 +500,10 @@ if __name__ == "__main__":
 
         if config["physical"]["N_MONOMERS"] <= 50:
             config["simulation"]["MINIMIZATION_STEPS"] = 200
-
+        
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config)
+        print("add positions")
         add_polymer_positions(config)
 
     if run_type == "experiment_microcontraction":
