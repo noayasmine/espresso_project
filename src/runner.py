@@ -429,12 +429,12 @@ if __name__ == "__main__":
     
         config["simulation"]["SAVE_VTK"] = True
         config["simulation"]["SHEAR"] = shear
-        config["simulation"]["TOTAL_TIME"] = 0.05
+        config["simulation"]["TOTAL_TIME"] = 0.1
 
         config["simulation"]["COMPUTE_POSITIONS"] = False
 
-        config["simulation"]["N_POLYMERS"] = 20
-        config["simulation"]["MINIMIZATION_STEPS"] = 200
+        config["simulation"]["N_POLYMERS"] = 1
+        # config["simulation"]["MINIMIZATION_STEPS"] = 200
         config["physical"]["k"] = 100
         config["physical"]["N_MONOMERS"] = 50
         config["simulation"]["SEED"] = 1
