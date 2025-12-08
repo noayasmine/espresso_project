@@ -430,6 +430,7 @@ if __name__ == "__main__":
         config["simulation"]["SAVE_VTK"] = True
         config["simulation"]["SHEAR"] = shear
         config["simulation"]["TOTAL_TIME"] = 0.1
+        config["FORCE_THRESHOLD"] =  0.01
 
         config["simulation"]["COMPUTE_POSITIONS"] = False
 
@@ -438,21 +439,12 @@ if __name__ == "__main__":
         config["physical"]["k"] = 100
         config["physical"]["N_MONOMERS"] = 50
         config["simulation"]["SEED"] = 1
-        # N_POLYMERS_FREE <= N_POLYMERS
-        # config["simulation"]["N_POLYMERS_FREE"] = 5
+
         config["simulation"]["LB_TIME_STEP"] = 0.001
         # config["simulation"]["SELF_ASSOCIATE"] = True
 
-        # if config["physical"]["N_MONOMERS"] > 50:
-        #     config["simulation"]["MINIMIZATION_STEPS"] = 600
-        #     config["simulation"]["TIME_STEP"] = 0.001
-        #     config["simulation"]["LB_TIME_STEP"] = 0.001
-
-        # if config["physical"]["N_MONOMERS"] <= 50:
-        #     config["simulation"]["MINIMIZATION_STEPS"] = 200
-
         add_timeloops_from_gridsize(config)
-        add_dependent_parameters(config)
+        add_dependent_parameters(config,LJ_strength=0)
         add_polymer_positions(config)
     
     if run_type == "experiment_sphere":
@@ -473,9 +465,7 @@ if __name__ == "__main__":
         config["simulation"]["COMPUTE_POSITIONS"] = False
         config["simulation"]["SEED"] = 42
 
-        LJ_strength=18
-
-        config["simulation"]["N_POLYMERS"] = 30
+        config["simulation"]["N_POLYMERS"] = 1
         # config["simulation"]["N_POLYMERS"] = 1
         config["geometry"]["BOX_Lx"] = 100
         config["geometry"]["BOX_Ly"] = 50
@@ -515,7 +505,6 @@ if __name__ == "__main__":
         config["simulation"]["SAVE_VTK"] = True
         config["simulation"]["SHEAR"] = shear
         config["simulation"]["TOTAL_TIME"] = 0.1
-        LJ_strength=18
 
         # config["simulation"]["N_POLYMERS"] = 50
         config["simulation"]["N_POLYMERS"] = 1
@@ -548,6 +537,6 @@ if __name__ == "__main__":
         add_dependent_parameters(config)
         add_polymer_positions(config)
 
-    lbf, forces, positions, drag_forces = run_simulation(config)
+    lbf, forces, positions, drag_forces, tensile_forces = run_simulation(config)
 
-    save_results(config, lbf, forces, drag_forces, positions)
+    save_results(config, lbf, forces, drag_forces, tensile_forces, positions)

@@ -88,163 +88,6 @@ def build_bond_list(existing_pairs):
     bond_list = sorted(set(bond_list))
     return bond_list
 
-def initialize_equilibrium_matrix(bond_list, N, d):
-    """
-    Allocate A for a fixed bond topology; values will be filled later.
-    """
-    M = len(bond_list)
-    A = np.zeros((d * N, M), dtype=float)
-    return A
-
-
-def update_equilibrium_matrix_directions(A, bond_list, positions):
-    """
-    Update columns of A in-place with current bond unit vectors.
-    """
-    positions = np.asarray(positions, dtype=float)
-    N, d = positions.shape
-
-    for k, (i, j) in enumerate(bond_list):
-        b = positions[j] - positions[i]
-        norm_b = np.linalg.norm(b)
-        rows_i = slice(d * i, d * i + d)
-        rows_j = slice(d * j, d * j + d)
-
-        if norm_b == 0.0:
-            A[rows_i, k] = 0.0
-            A[rows_j, k] = 0.0
-            continue
-
-        u = b / norm_b
-        A[rows_i, k] = u
-        A[rows_j, k] = -u
-
-
-def extend_topology_with_new_bonds(existing_pairs,
-                                   bond_list,
-                                   A,
-                                   added_pairs,
-                                   positions):
-    """
-    Extend bond_list and A when new bonds are added.
-    """
-    positions = np.asarray(positions, dtype=float)
-    N, d = positions.shape
-
-    new_bonds = []
-    for (i, j) in added_pairs:
-        if i == j:
-            continue
-        if i > j:
-            i, j = j, i
-        pair_fs = frozenset((i, j))
-
-        if pair_fs not in existing_pairs:
-            existing_pairs.add(pair_fs)
-
-        if (i, j) not in bond_list:
-            new_bonds.append((i, j))
-
-    if not new_bonds:
-        return bond_list, A
-
-    start_M = len(bond_list)
-    bond_list.extend(new_bonds)
-    M_new = len(bond_list)
-
-    # Expand A
-    A_expanded = np.zeros((d * N, M_new), dtype=float)
-    A_expanded[:, :start_M] = A
-    A = A_expanded
-
-    # Fill only new columns
-    for idx, (i, j) in enumerate(new_bonds, start=start_M):
-        b = positions[j] - positions[i]
-        norm_b = np.linalg.norm(b)
-        if norm_b == 0.0:
-            continue
-        u = b / norm_b
-        rows_i = slice(d * i, d * i + d)
-        rows_j = slice(d * j, d * j + d)
-        A[rows_i, idx] = u
-        A[rows_j, idx] = -u
-
-    return bond_list, A
-
-def map_bond_tensions_to_chain_sites(
-    bond_list,
-    bond_tensions,
-    positions,
-    type_dictionary=None,
-):
-    """
-    Map scalar bond tensions to per-particle tension vectors (à la
-    compute_tensile_forces_along_chain), ignoring inter-polymer bonds.
-
-    For each *intra-polymer* bond (i, j):
-      - Determine the "upstream" particle as min(i, j).
-      - Assign T_ij * u_ij to that particle, where u_ij is the unit vector
-        from upstream -> downstream.
-      - The downstream particle gets nothing for this bond.
-    Inter-polymer bonds (type_dictionary[i] != type_dictionary[j]) are skipped.
-
-    Parameters
-    ----------
-    bond_list : list[(int, int)]
-        List of bonds (i, j) in the same order as bond_tensions.
-    bond_tensions : (M,) array_like
-        Scalar bond tensions corresponding to bond_list.
-    positions : (N, 3) array_like
-        Particle positions.
-    type_dictionary : dict[int, int] or None
-        Maps particle id -> polymer id.
-        If provided, bonds with different polymer ids are ignored
-        (treated as inter-polymer).
-        If None, all bonds are treated as intra-polymer.
-
-    Returns
-    -------
-    per_particle_tension : (N, 3) ndarray
-        Tension vector assigned to each particle, in the same spirit as
-        compute_tensile_forces_along_chain:
-          - monomer i gets the tension of bond(i -> i+1) along that bond,
-          - last monomer in each chain (highest id) typically has zero.
-    """
-    positions = np.asarray(positions, dtype=float)
-    N = positions.shape[0]
-    per_particle_tension = np.zeros((N, 3), dtype=float)
-
-    bond_tensions = np.asarray(bond_tensions, dtype=float)
-
-    for (i, j), T in zip(bond_list, bond_tensions):
-        # Optionally ignore inter-polymer bonds
-        if type_dictionary is not None:
-            if type_dictionary[i] != type_dictionary[j]:
-                # Inter-polymer bond: skip for this mapping
-                continue
-
-        # Decide which side gets the tension:
-        # assume particle ids along a chain increase in contour order,
-        # so min(i, j) is "upstream" like your (0,1)->0, (3,4)->3 example.
-        if i < j:
-            upstream, downstream = i, j
-        else:
-            upstream, downstream = j, i
-
-        # Bond direction from upstream -> downstream
-        b = positions[downstream] - positions[upstream]
-        norm_b = np.linalg.norm(b)
-        if norm_b == 0.0:
-            # Degenerate, skip
-            continue
-
-        u = b / norm_b  # unit direction
-
-        # Assign vector tension to upstream particle
-        per_particle_tension[upstream] += T * u
-
-    return per_particle_tension
-
 def compute_tensile_forces_from_drag(forces_per_particle, N_POLYMERS, N_MONOMERS):
     """
     forces_per_particle: (N_POLYMERS*N_MONOMERS, 3) drag forces per monomer
@@ -312,159 +155,30 @@ def compute_fene_tensile_forces(positions,N_POLYMERS,N_MONOMERS,k,r_0,d_r_max):
     r = np.linalg.norm(r_vec, axis=-1)            # (P, M-1)
     x = r - r_0                                   # overextension
 
-    # scalar FENE tension (zero if compressed or invalid)
+    # scalar FENE tension (zero if compressed or 0)
     F_mag = np.zeros_like(r)
-    mask = (x > 0) & (x < d_r_max)
-    xv = x[mask]
-    F_mag[mask] = k * xv / (1.0 - (xv / d_r_max)**2)
+    # mask = (x < d_r_max)
+    # xv = x[mask]
+    # F_mag[mask] = k * xv / (1.0 - (xv / d_r_max)**2)
+    F_mag = k * x / (1.0 - (x / d_r_max)**2)
 
-    # unit vectors
-    r_expanded = r[:, :, None]                    # (P, M-1, 1)
-    t_hat = np.zeros_like(r_vec)
-    nonzero = r > 0
-    t_hat[nonzero] = r_vec[nonzero] / r_expanded[nonzero]
+    # # unit vectors
+    # r_expanded = r[:, :, None]                    # (P, M-1, 1)
+    # t_hat = np.zeros_like(r_vec)
+    # nonzero = r > 0
+    # t_hat[nonzero] = r_vec[nonzero] / r_expanded[nonzero]
 
-    # vector tensile forces on monomer i from bond (i→i+1)
-    F_vec_bonds = F_mag[..., None] * t_hat        # (P, M-1, 3)
+    # # vector tensile forces on monomer i from bond (i→i+1)
+    # F_vec_bonds = F_mag[..., None] * t_hat        # (P, M-1, 3)
 
     # build per-monomer forces (last monomer has zero force)
-    tensile = np.zeros((N_POLYMERS, N_MONOMERS, 3))
-    tensile[:, :-1, :] = F_vec_bonds              # assign bond-force to monomer i
+    tensile = np.zeros((N_POLYMERS, N_MONOMERS))
+    tensile[:, :-1] = F_mag              # assign bond-force to monomer i
 
     # flatten
-    tensile_flat = tensile.reshape(-1, 3)
+    tensile_flat = tensile.reshape(-1)
 
     return tensile_flat
-
-def compute_tensile_from_total_forces(system,total_forces,drag_forces,positions,particle_ids,\
-        N_POLYMERS,N_MONOMERS,epsilon_LJ,sigma_LJ,neighbor_distance):
-    """
-    Approximate tensile force along the downstream bond at each monomer
-    by stripping off LJ and drag contributions from the *total* MD force.
-
-    Parameters
-    ----------
-    system : espressomd.System
-        The running ESPResSo system (used for neighbor search).
-    total_forces : (N_POLYMERS*N_MONOMERS, 3) array
-        Total force per particle (ESPResSo's particle.f, flattened in contour order).
-    drag_forces : (N_POLYMERS*N_MONOMERS, 3) array
-        Drag forces per particle (e.g. from lb_drag_forces), same flattening.
-    positions : (N_POLYMERS*N_MONOMERS, 3) array
-        Positions in contour order (same as you already have).
-    particle_ids : (N_POLYMERS*N_MONOMERS,) array-like of int
-        ESPResSo particle ids corresponding to the flattened ordering.
-    N_POLYMERS, N_MONOMERS : int
-        Number of polymers and monomers per polymer.
-    epsilon_LJ, sigma_LJ : float
-        LJ parameters in the potential:
-        U = 4*epsilon * [ (sigma/r)^12 - (sigma/r)^6 ] + U_shift
-    neighbor_distance : float
-        Cutoff distance for LJ neighbors (e.g. 6*a).
-
-    Returns
-    -------
-    tensile_flat : (N_POLYMERS*N_MONOMERS, 3) array
-        Vector tensile force per monomer, where for monomer i in each polymer
-        (except the last) we store the tension through bond i -> i+1.
-        Last monomer in each polymer is set to zero.
-    """
-
-    P = int(N_POLYMERS)
-    M = int(N_MONOMERS)
-
-    total_forces = np.asarray(total_forces, dtype=float)
-    drag_forces  = np.asarray(drag_forces, dtype=float)
-    positions    = np.asarray(positions, dtype=float)
-    particle_ids = np.asarray(particle_ids, dtype=int)
-
-    assert total_forces.shape == (P*M, 3)
-    assert drag_forces.shape  == (P*M, 3)
-    assert positions.shape    == (P*M, 3)
-    assert particle_ids.shape == (P*M,)
-
-    # Map ESPResSo particle id -> flat index
-    id_to_flat = {int(pid): idx for idx, pid in enumerate(particle_ids)}
-
-    tensile = np.zeros((P*M, 3), dtype=float)
-
-    # Helper: LJ force magnitude as function of r
-    def lj_force_scalar(r):
-        """
-        Return scalar prefactor for F_LJ = f(r) * (r_vec / r).
-        This is -dU/dr for the standard 12-6 LJ potential (no shift in force).
-        """
-        inv_r = 1.0 / r
-        sr = sigma_LJ * inv_r
-        sr2 = sr * sr
-        sr6 = sr2**3
-        sr12 = sr6 * sr6
-        # F_r = 24 epsilon [ 2 (sigma^12 / r^13) - (sigma^6 / r^7) ]
-        #     = 24 epsilon [ 2 sr^12 - sr^6 ] / r
-        return 24.0 * epsilon_LJ * (2.0 * sr12 - sr6) * inv_r
-
-    # Loop polymers and monomers
-    for p in range(P):
-        for m in range(M - 1):  # last monomer has no downstream bond
-            flat_idx = p*M + m
-            flat_idx_down = p*M + (m + 1)
-
-            # Bond direction i -> i+1
-            bond_vec = positions[flat_idx_down] - positions[flat_idx]
-            norm_bond = np.linalg.norm(bond_vec)
-            if norm_bond == 0.0:
-                # Degenerate, skip
-                continue
-
-            t_hat = bond_vec / norm_bond
-
-            # Total force and drag force on this particle
-            F_tot  = total_forces[flat_idx]
-            F_drag = drag_forces[flat_idx]
-
-            # Sum LJ forces from neighbors within neighbor_distance
-            pid = int(particle_ids[flat_idx])
-            p_handle = system.part.by_id(pid)
-            neighbor_ids = system.cell_system.get_neighbors(p_handle, neighbor_distance)
-            # We use a set just as you did (in case of duplicates)
-            neighbor_ids_set = {int(nid) for nid in neighbor_ids}
-
-            F_LJ_sum = np.zeros(3, dtype=float)
-
-            for nid in neighbor_ids_set:
-                # Skip self just in case
-                if nid == pid:
-                    continue
-
-                # Map neighbor id to flat index (only if it is in our list)
-                j_flat = id_to_flat.get(nid, None)
-                if j_flat is None:
-                    # Neighbor not in our tracked particle_ids (e.g. other species)
-                    continue
-
-                r_vec = positions[j_flat] - positions[flat_idx]
-                r = np.linalg.norm(r_vec)
-                if r == 0.0:
-                    continue
-
-                # LJ force from neighbor j on i
-                f_scalar = lj_force_scalar(r)
-                F_ij_LJ = f_scalar * (r_vec / r)
-                F_LJ_sum += F_ij_LJ
-
-            # Projections along bond direction
-            proj_tot  = np.dot(F_tot, t_hat)
-            proj_LJ   = np.dot(F_LJ_sum, t_hat)
-            proj_drag = np.dot(F_drag, t_hat)
-
-            # Remove LJ and drag contributions to isolate FENE tension along this bond
-            T_scalar = proj_tot - proj_LJ - proj_drag
-
-            tensile[flat_idx] = T_scalar * t_hat
-
-        # last monomer of polymer p stays zero
-
-    return tensile
 
 def compute_tensile_forces_along_chain(drag_forces, positions, N_POLYMERS, N_MONOMERS):
     """
@@ -523,36 +237,52 @@ def compute_tensile_forces_along_chain(drag_forces, positions, N_POLYMERS, N_MON
 
     return tensile.reshape(-1, 3)
 
-def compute_tensile_forces_with_A(forces, A):
+def add_tensile_forces_to_vtk_scalars(vtk_path, tensile_force_scalar):
     """
-    Solve A T = -F_all and return tensile forces per particle + bond tensions.
+    Insert per-particle scalar tensile force magnitudes into an existing VTK legacy file.
 
     Parameters
     ----------
-    forces : (N, d) array
-        External forces per particle.
-    A : (d*N, M) array
-        Equilibrium matrix (already filled with correct bond directions).
-
-    Returns
-    -------
-    tensile_forces_per_particle : (N, d) array
-        Internal forces per particle from bond tensions.
-    bond_tensions : (M,) array
-        Scalar tension in each bond (order matches columns of A).
+    vtk_path : str
+        Path to the VTK file written by Espresso.
+    tensile_force_scalar : array-like, shape (N,)
+        Scalar tensile force per particle.
     """
-    forces = np.asarray(forces, dtype=float)
-    N, d = forces.shape
-    F_all = forces.reshape(d * N)
 
-    # Solve A T = -F_all
-    bond_tensions, *_ = np.linalg.lstsq(A, -F_all, rcond=None)
+    # Read file
+    with open(vtk_path, "r") as f:
+        lines = f.readlines()
 
-    F_int_all = A @ bond_tensions
-    tensile_forces_per_particle = F_int_all.reshape(N, d)
+    new_lines = []
+    i = 0
+    n_particles = None
 
-    return tensile_forces_per_particle, bond_tensions
+    while i < len(lines):
+        line = lines[i]
+        new_lines.append(line)
 
+        # Detect POINT_DATA line
+        if line.startswith("POINT_DATA"):
+            n_particles = int(line.split()[1])
+
+        # Detect end of previous dataset (velocity lookup table)
+        if line.strip() == "LOOKUP_TABLE default":
+            # Skip velocity entries
+            for k in range(n_particles):
+                i += 1
+                new_lines.append(lines[i])
+
+            # Insert scalar tensile forces
+            new_lines.append("SCALARS tensile_force float\n")
+            new_lines.append("LOOKUP_TABLE default\n")
+            for p in range(n_particles):
+                val = tensile_force_scalar[p]
+                new_lines.append(f"{val}\n")
+
+        i += 1
+
+    with open(vtk_path, "w") as f:
+        f.writelines(new_lines)
 
 def add_tensile_forces_to_vtk(vtk_path, tensile_forces):
     """
@@ -899,8 +629,8 @@ def run_simulation(params):
 
     # drag forces per monomer
     drag_forces_traj = np.empty((int(LOOPS), int(N_POLYMERS * N_MONOMERS), 3), dtype=np.float32)
-    tensile_forces_traj = np.empty((int(LOOPS), int(N_POLYMERS * N_MONOMERS), 3), dtype=np.float32)
-    total_forces_traj = np.empty((int(LOOPS), int(N_POLYMERS * N_MONOMERS), 3), dtype=np.float32)
+    tensile_forces_traj = np.empty((int(LOOPS), int(N_POLYMERS * N_MONOMERS)), dtype=np.float32)
+
     WINDOW = 10
 
     # Build global view of existing bonds (unordered pairs) + degrees
@@ -922,90 +652,6 @@ def run_simulation(params):
     print("The existing pairs set:")
     print(existing_pairs)
 
-    N = len(particle_ids)
-    d = 3  # or positions.shape[1]
-
-    bond_list = build_bond_list(existing_pairs)
-    A = initialize_equilibrium_matrix(bond_list, N, d)
-
-
-
-    # if save_VTK:
-    #     for i in range(int(LOOPS)):
-    #         if i==1:
-    #             np.savez_compressed(os.path.join(DIRECTORY, "init_positions.npz"), positions=accumulator_positions.time_series())
-    #             print(f"Positions shape: {accumulator_positions.time_series().shape}")
-
-    #             lbf.write_vtk_boundary(outdir + f"boundary_{i:05d}.vtk")
-
-    #         print(f"step {i + 1} of {int(LOOPS)}", end='\r', flush=True)
-    #         lbf.write_vtk_velocity(outdir + f"velocity_{i:05d}.vtk")
-    #         # lbf.write_vtk_boundary(outdir + f"boundary_{i:05d}.vtk")
-    #         system.part.writevtk(outdir + f"particles_{i:05d}.vtk")
-
-    #         system.integrator.run(STEPS)
-
-    #         drag_forces_per_particle = lb_drag_forces(system, lbf, GAMMA, particle_ids)
-    #         drag_forces_traj[i] = drag_forces_per_particle
-    #         start = max(0, i - WINDOW + 1)              # inclusive
-
-    #         ###### computing tensile from total - cumulative drag force ######
-    #         # drag_window = drag_forces_traj[start:i+1]    # shape: (window_len, N_particles, 3)
-    #         # drag_avg = drag_window.mean(axis=0)          # shape: (N_particles, 3)
-    #         total_forces_per_particle = espressomd.observables.ParticleForces(ids=particle_ids).calculate()
-    #         total_forces_traj[i] = total_forces_per_particle
-    #         total_window = total_forces_traj[start:i+1]        # (window_len, N_particles, 3)
-    #         total_avg   = total_window.mean(axis=0) 
-    #         # tensile_forces = compute_tensile_forces_general(total_avg, drag_avg, N_POLYMERS, N_MONOMERS)
-    #         # tensile_forces_traj[i] = tensile_forces
-    #         # tensile_window = tensile_forces_traj[start:i+1]
-    #         # tensile_moving_avg = tensile_window.mean(axis=0)
-    #         ######
-
-    #         ###### compute tensile forces from the fene over extension ######
-    #         # positions = espressomd.observables.ParticlePositions(ids=particle_ids).calculate()
-    #         # tensile_forces = compute_fene_tensile_forces(positions,N_POLYMERS,N_MONOMERS,k=k,r_0=r_0,d_r_max=d_r_max)
-    #         # total_forces_traj[i] = tensile_forces
-    #         # start = max(0, i - WINDOW + 1)    
-    #         # tensile_window = tensile_forces_traj[start:i+1]
-    #         # tensile_moving_avg = tensile_window.mean(axis=0)
-    #         #######
-
-    #         drag_window = drag_forces_traj[start:i+1]    # shape: (window_len, N_particles, 3)
-    #         drag_avg = drag_window.mean(axis=0)          # shape: (N_particles, 3)
-    #         positions = espressomd.observables.ParticlePositions(ids=particle_ids).calculate()
-    #         # tensile_forces = compute_tensile_forces_along_chain(drag_avg,positions,N_POLYMERS,N_MONOMERS)
-    #         # tensile_forces = compute_tensile_forces_tree(drag_avg,positions,existing_pairs,N_POLYMERS,N_MONOMERS)
-    #         # tensile_forces = compute_tensile_from_total_forces(system,total_avg,drag_avg,positions,particle_ids,\
-    #         #     N_POLYMERS,N_MONOMERS,epsilon,sigma,neighbor_distance=cutoff)
-    #         update_equilibrium_matrix_directions(A, bond_list, positions)
-    #         tensile_forces, A = compute_tensile_forces_general(forces, positions, bond_list, A)
-    #         tensile_forces_traj[i] = tensile_forces
-    #         tensile_window = tensile_forces_traj[start:i+1]
-    #         tensile_moving_avg = tensile_window.mean(axis=0)
-
-    #         vtk_file = outdir + f"particles_{i:05d}.vtk"
-    #         add_tensile_forces_to_vtk(vtk_file, tensile_moving_avg)
-
-    #         net_tensile = np.linalg.norm(tensile_moving_avg, axis=1)
-
-    #         if SELF_ASSOCIATE and i >= WINDOW:
-    #             exceed_mask = net_tensile > FORCE_THRESHOLD
-    #             exceeding_ids = particle_ids[exceed_mask]
-    #             R_CAPTURE = 2 * a
-
-    #             added_pairs = add_bonds(system, exceeding_ids, fene=fene, type_dictionary=type_dictionary, distance=R_CAPTURE,
-    #                 type_to_ids=type_to_ids, existing_pairs=existing_pairs, degree=degree)
-    #             if len(added_pairs) > 0:
-    #                 # Update topology and A structure
-    #                 bond_list, A = extend_topology_with_new_bonds(
-    #                     existing_pairs=existing_pairs,
-    #                     bond_list=bond_list,
-    #                     A=A,
-    #                     added_pairs=added_pairs,
-    #                     positions=positions  # use current positions
-    #                 )
-
     if save_VTK:
         for i in range(int(LOOPS)):
             if i==1:
@@ -1020,54 +666,32 @@ def run_simulation(params):
 
             system.integrator.run(STEPS)
 
-            drag_forces_per_particle = lb_drag_forces(system, lbf, GAMMA, particle_ids)
-            drag_forces_traj[i] = drag_forces_per_particle
-            start = max(0, i - WINDOW + 1)              # inclusive
+            # drag_forces_per_particle = lb_drag_forces(system, lbf, GAMMA, particle_ids)
+            # drag_forces_traj[i] = drag_forces_per_particle
+            # start = max(0, i - WINDOW + 1)              # inclusive
+            # drag_window = drag_forces_traj[start:i+1]
+            # avg_drag = drag_window.mean(axis=0)
 
-            drag_window = drag_forces_traj[start:i+1]    # (window_len, N_particles, 3)
-            drag_avg = drag_window.mean(axis=0)          # (N_particles, 3)
-
+            ###### compute tensile forces from the fene over extension ######
             positions = espressomd.observables.ParticlePositions(ids=particle_ids).calculate()
+            net_tensile_forces = compute_fene_tensile_forces(positions,N_POLYMERS,N_MONOMERS,k=k,r_0=r_0,d_r_max=d_r_max)
 
-            # Update A directions with current positions
-            update_equilibrium_matrix_directions(A, bond_list, positions)
-
-            tensile_forces, bond_tensions = compute_tensile_forces_with_A(drag_avg, A)
-            # tensile_forces = map_bond_tensions_to_chain_sites(bond_list,bond_tensions,positions,type_dictionary)
-            
-            # tensile_forces = compute_tensile_forces_along_chain(drag_avg,positions,N_POLYMERS,N_MONOMERS)
-            tensile_forces_traj[i] = tensile_forces
+            # net_tensile = np.linalg.norm(tensile_forces, axis=1)
+            tensile_forces_traj[i] = net_tensile_forces
+            start = max(0, i - WINDOW + 1)    
             tensile_window = tensile_forces_traj[start:i+1]
-            tensile_moving_avg = tensile_window.mean(axis=0)
+            tensile_avg = tensile_window.mean(axis=0)
 
             vtk_file = outdir + f"particles_{i:05d}.vtk"
-            add_tensile_forces_to_vtk(vtk_file, tensile_moving_avg)
-
-            net_tensile = np.linalg.norm(tensile_moving_avg, axis=1)
+            add_tensile_forces_to_vtk_scalars(vtk_file, tensile_avg)
 
             if SELF_ASSOCIATE and i >= WINDOW:
-
-                exceed_mask = net_tensile > FORCE_THRESHOLD
+                exceed_mask = tensile_avg > FORCE_THRESHOLD
                 exceeding_ids = particle_ids[exceed_mask]
                 R_CAPTURE = 2 * a
 
-                added_pairs = add_bonds(system, exceeding_ids,
-                                        fene=fene,
-                                        type_dictionary=type_dictionary,
-                                        distance=R_CAPTURE,
-                                        type_to_ids=type_to_ids,
-                                        existing_pairs=existing_pairs,
-                                        degree=degree)
-
-                if len(added_pairs) > 0:
-                    bond_list, A = extend_topology_with_new_bonds(
-                        existing_pairs=existing_pairs,
-                        bond_list=bond_list,
-                        A=A,
-                        added_pairs=added_pairs,
-                        positions=positions
-                    )
-
+                added_pairs = add_bonds(system, exceeding_ids, fene=fene, type_dictionary=type_dictionary, distance=R_CAPTURE,
+                    type_to_ids=type_to_ids, existing_pairs=existing_pairs, degree=degree)
 
     if not save_VTK:
         for i in range(int(LOOPS)):
@@ -1097,4 +721,4 @@ def run_simulation(params):
     end_time = time.time()
     print(f"Total runtime: {end_time - start_time:.2f} seconds")
     
-    return lbf, accumulator_forces, accumulator_positions, drag_forces_traj
+    return lbf, accumulator_forces, accumulator_positions, drag_forces_traj, tensile_forces_traj
