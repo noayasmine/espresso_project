@@ -419,32 +419,37 @@ if __name__ == "__main__":
     
     if run_type == "experiment":
         shear = float(sys.argv[2])
-        config["simulation"]["SELF_ASSOCIATE"] = sys.argv[3].lower() == "true"
+        # config["simulation"]["SELF_ASSOCIATE"] = sys.argv[3].lower() == "true"
+        config["simulation"]["SELF_ASSOCIATE"] = False
+        N_monomers = int(sys.argv[3])
+
         save_dir = str(sys.argv[4])
 
         if config["simulation"]["SELF_ASSOCIATE"]:
-            config["output"]["DIRECTORY"] = f"./{save_dir}/selfassociation/"
+            # config["output"]["DIRECTORY"] = f"./{save_dir}/selfassociation/"
+            config["output"]["DIRECTORY"] = f"./{save_dir}/N_monomers_{int(N_monomers)}/"
         else:
-            config["output"]["DIRECTORY"] = f"./{save_dir}/no_selfassociation/"
+            # config["output"]["DIRECTORY"] = f"./{save_dir}/no_selfassociation/"
+            config["output"]["DIRECTORY"] = f"./{save_dir}/N_monomers_{int(N_monomers)}/"
     
         config["simulation"]["SAVE_VTK"] = True
         config["simulation"]["SHEAR"] = shear
-        config["simulation"]["TOTAL_TIME"] = 0.1
+        config["simulation"]["TOTAL_TIME"] = 0.001
         config["FORCE_THRESHOLD"] =  0.01
 
-        config["simulation"]["COMPUTE_POSITIONS"] = False
+        config["simulation"]["COMPUTE_POSITIONS"] = True
 
         config["simulation"]["N_POLYMERS"] = 1
-        # config["simulation"]["MINIMIZATION_STEPS"] = 200
-        config["physical"]["k"] = 100
-        config["physical"]["N_MONOMERS"] = 50
+        config["simulation"]["MINIMIZATION_STEPS"] = 800
+        config["physical"]["k"] = 10
+        config["physical"]["N_MONOMERS"] = N_monomers
         config["simulation"]["SEED"] = 1
 
         config["simulation"]["LB_TIME_STEP"] = 0.001
         # config["simulation"]["SELF_ASSOCIATE"] = True
 
         add_timeloops_from_gridsize(config)
-        add_dependent_parameters(config,LJ_strength=0)
+        add_dependent_parameters(config,LJ_strength=18)
         add_polymer_positions(config)
     
     if run_type == "experiment_sphere":

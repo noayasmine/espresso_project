@@ -13,7 +13,7 @@ sys.path.append(project_root)
 # from src.plotting_griddistances_avg import plot_grid_results_avg
 
 from src.all_plotting import plot_time_series, plot_validation_results, plot_tethered_across_LJ_for_gamma, \
-plot_cumulative_force_across_gammas, plot_recoiling_across_LJ_for_gamma, plot_free_across_LJ_for_gamma
+plot_cumulative_force_across_gammas, plot_recoiling_across_LJ_for_gamma, plot_free_across_LJ_for_gamma_max_one
 
 from src.plotting_griddistances_avg import plot_grid_results_avg
 
@@ -23,6 +23,8 @@ def load_config(path):
 
 config_path = "/gpfs/home4/nroebersen/espresso_project/configs/default.json"
 config = load_config(config_path)
+
+
 
 # plot the grid distances plots
 # base_dir = "/home/nroebersen/espresso_project/validation_data/grid_test/test_grids_k1"
@@ -44,7 +46,7 @@ config = load_config(config_path)
 # plot_cumulative_force_across_gammas(config, base_dir, target_shear=11636, avg_window=1,
 #     use_last_fraction=0.30, start_from_right=50, skip=[0.007, 0.008, 0.009, 0.01, 0.011, 0.012, 0.013, 0.014, 0.015])
 
-# make plot for tethered uncoiling data
+# # make plot for tethered uncoiling data
 # base_dir = "/gpfs/home4/nroebersen/espresso_project/validation_data/single_runs/N50/validation_uncoil_k10/"
 # LJ_folders = [f for f in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, f))]
 # for LJ_folder in LJ_folders:
@@ -116,23 +118,21 @@ config = load_config(config_path)
 # plot_recoiling_across_LJ_for_gamma(config, base_dir, gamma_value=0.018, time_step=None, add_expected=True, N_mono=100, extension_metric="x", skip=[30, 28, 26, 24, 22, 8])
 
 
-base_dir = "/gpfs/home4/nroebersen/espresso_project/validation_data/free/validation_uncoil_free_k10"
-plot_free_across_LJ_for_gamma(
+# base_dir = "/gpfs/home4/nroebersen/espresso_project/validation_data/free/validation_uncoil_free_k10"
+# plot_free_across_LJ_for_gamma(
+#     config,
+#     base_dir,
+#     target_gamma="gamma_00180",                 # float like 0.0055 or string "gamma_00055"
+#     free_metric="end_to_end",     # "end_to_end" (default) or "max_pairwise"
+#     aggregate_runs=True,          # if True: mean±std over run_*; if False: show each run
+#     include_expected=True,
+#     Box_Lx=64
+# ) 
+base_dir = "/gpfs/home4/nroebersen/espresso_project/validation_data/free/validation_uncoil_free_k100"
+plot_free_across_LJ_for_gamma_max_one(
     config,
     base_dir,
     target_gamma="gamma_00180",                 # float like 0.0055 or string "gamma_00055"
-    free_metric="end_to_end",     # "end_to_end" (default) or "max_pairwise"
-    aggregate_runs=True,          # if True: mean±std over run_*; if False: show each run
-    include_expected=True,
-    Box_Lx=64
-) 
-base_dir = "/gpfs/home4/nroebersen/espresso_project/validation_data/free/validation_uncoil_free_k10"
-plot_free_across_LJ_for_gamma(
-    config,
-    base_dir,
-    target_gamma="gamma_00180",                 # float like 0.0055 or string "gamma_00055"
-    free_metric="max_pairwise",     # "end_to_end" (default) or "max_pairwise"
-    aggregate_runs=True,          # if True: mean±std over run_*; if False: show each run
     include_expected=True,
     Box_Lx=64
 ) 

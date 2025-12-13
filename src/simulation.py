@@ -574,6 +574,7 @@ def run_simulation(params):
     logging.info("Build Polymer(s).")
     type_dictionary, type_to_ids = build_polymers(system, N_MONOMERS, N_POLYMERS, N_POLYMERS_FREE, START_POSITIONS, POSITIONS, fene, r_0, SEED, \
         TETHERED, COILED, COMPUTE_POSITIONS)
+    
     # Add soft sphere potential between wall and particles
     for particle_type in all_types:
         system.non_bonded_inter[particle_type, N_POLYMERS].soft_sphere.set_params(a=1e-3, n=1.2, offset=0, cutoff=phys["a"])
@@ -666,11 +667,8 @@ def run_simulation(params):
 
             system.integrator.run(STEPS)
 
-            # drag_forces_per_particle = lb_drag_forces(system, lbf, GAMMA, particle_ids)
-            # drag_forces_traj[i] = drag_forces_per_particle
-            # start = max(0, i - WINDOW + 1)              # inclusive
-            # drag_window = drag_forces_traj[start:i+1]
-            # avg_drag = drag_window.mean(axis=0)
+            drag_forces_per_particle = lb_drag_forces(system, lbf, GAMMA, particle_ids)
+            drag_forces_traj[i] = drag_forces_per_particle
 
             ###### compute tensile forces from the fene over extension ######
             positions = espressomd.observables.ParticlePositions(ids=particle_ids).calculate()
@@ -705,16 +703,23 @@ def run_simulation(params):
             drag_forces_per_particle = lb_drag_forces(system, lbf, GAMMA, particle_ids)
             drag_forces_traj[i] = drag_forces_per_particle
 
-            tensile_forces = compute_tensile_forces(drag_forces_per_particle, N_POLYMERS, N_MONOMERS)
-            tensile_forces_traj[i] = tensile_forces
-            net_tensile = np.abs(np.sum(tensile_forces, axis=1))
+            ###### compute tensile forces from the fene over extension ######
+            positions = espressomd.observables.ParticlePositions(ids=particle_ids).calculate()
+            net_tensile_forces = compute_fene_tensile_forces(positions,N_POLYMERS,N_MONOMERS,k=k,r_0=r_0,d_r_max=d_r_max)
 
-            if SELF_ASSOCIATE:
-                # boolean mask of monomers exceeding threshold tension 
-                exceed_mask = net_tensile > FORCE_THRESHOLD
-                exceeding_ids = particle_ids[exceed_mask]      
-                R_CAPTURE = 2 * a                 
-                added = add_bonds(system, exceeding_ids, fene=fene, type_dictionary=type_dictionary, distance=R_CAPTURE)
+            # net_tensile = np.linalg.norm(tensile_forces, axis=1)
+            tensile_forces_traj[i] = net_tensile_forces
+            start = max(0, i - WINDOW + 1)    
+            tensile_window = tensile_forces_traj[start:i+1]
+            tensile_avg = tensile_window.mean(axis=0)
+
+            if SELF_ASSOCIATE and i >= WINDOW:
+                exceed_mask = tensile_avg > FORCE_THRESHOLD
+                exceeding_ids = particle_ids[exceed_mask]
+                R_CAPTURE = 2 * a
+
+                added_pairs = add_bonds(system, exceeding_ids, fene=fene, type_dictionary=type_dictionary, distance=R_CAPTURE,
+                    type_to_ids=type_to_ids, existing_pairs=existing_pairs, degree=degree)
 
             # add removal of bonds? 
 

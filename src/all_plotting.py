@@ -1208,7 +1208,7 @@ def plot_recoiling_across_LJ_for_gamma(
         return {}
 
 
-def plot_free_across_LJ_for_gamma(
+def plot_free_across_LJ_for_gamma__(
     config,
     base_dir,
     target_gamma,                 
@@ -1445,6 +1445,227 @@ def plot_free_across_LJ_for_gamma(
             outname += "_allruns"
         outname += f"_{'e2e' if free_metric=='end_to_end' else 'maxpair'}"
         outname += ".png"
+
+    out_png = os.path.join(base_dir, outname)
+    plt.savefig(out_png, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    print(f"Saved {out_png}")
+
+
+
+
+
+def plot_free_across_LJ_for_gamma_max_one(
+    config,
+    base_dir,
+    target_gamma,
+    include_expected=True,
+    Box_Lx=64,
+    Box_Ly=32,
+    Box_Lz=32,
+    outname=None
+):
+    """
+    Plot normalized *maximum pairwise extension* vs shear rate for the FREE case,
+    drawing multiple LJ_* in one figure.
+
+    For each LJ, gamma, shear_SSS, and run_RRR:
+
+      1. Compute the time series of max pairwise extension:
+            ext_ts = max_pairwise_extension_ts_pbc(positions, Lx, Ly, Lz)
+
+      2. Take the maximum over time for that run:
+            E_run = max_t ext_ts[t]
+
+      3. For each shear_SSS, keep **only one value**:
+            E_shear = max_runs E_run
+
+      4. Normalize with:
+            y = E_shear / Lmax
+
+         where Lmax starts as N * 2 * a from the first loaded positions
+         and is then updated to be max(Lmax, E_shear) over all shears/runs.
+    """
+
+    # ---------- small helpers ----------
+    def fmt_kT(val):
+        r = round(val)
+        if abs(val - r) < 1e-9:
+            return f"{int(r)} kT"
+        s = f"{val:.2f}".rstrip('0').rstrip('.')
+        return f"{s} kT"
+
+    def _compute_max_pairwise_extension(positions, Lx, Ly, Lz):
+        """
+        Return the maximum pairwise extension over the whole trajectory.
+        positions: (T, N, D)
+        """
+        ext_ts = max_pairwise_extension_ts_pbc(positions, Lx, Ly, Lz)
+        return float(np.max(ext_ts))
+
+    plt.style.use("seaborn-v0_8-whitegrid")
+    colors = plt.get_cmap("Dark2").colors
+
+    a = config["physical"]["a"]
+    dyn_visc_SI = config["physical"]["VISC_dyn"] / 10.0  # unused but kept in case
+
+    Lx_eff = Box_Lx
+    Ly_eff = Box_Ly
+    Lz_eff = Box_Lz
+
+    # expected (free) "Schneider et al."
+    exp_x = np.array([1, 10, 100, 400, 1100, 5000, 10000], dtype=float)
+    exp_y = np.array([0.07, 0.07, 0.07, 0.07, 0.07, 0.75, 1], dtype=float)
+    exp_s = np.array([0.07, 0.07, 0.07, 0.07, 0.07, 0.3, 0.3], dtype=float)
+
+    # parse/format gamma
+    gpat = re.compile(r"gamma_(\d{5})")
+    if isinstance(target_gamma, str) and gpat.match(target_gamma):
+        gamma_folder = target_gamma
+        gamma_val = int(gpat.match(target_gamma).group(1)) / 1e4
+    else:
+        g = float(target_gamma)
+        gamma_folder = f"gamma_{int(round(g * 1e4)):05d}"
+        gamma_val = g
+
+    # collect LJ folders within base_dir
+    lj_pat = re.compile(r"LJ_(\d{5})")
+    entries = [d for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d))]
+    lj_dirs = [d for d in entries if lj_pat.match(d)] or entries
+
+    def _lj_key(d):
+        m = lj_pat.match(d)
+        return int(m.group(1)) if m else d
+
+    lj_dirs.sort(key=_lj_key)
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    any_curve = False
+
+    for i, lj in enumerate(lj_dirs):
+        lj_path = os.path.join(base_dir, lj)
+        gpath = os.path.join(lj_path, gamma_folder)
+        if not os.path.isdir(gpath):
+            continue
+
+        # Format LJ label as kT value
+        m = lj_pat.match(lj)
+        if m:
+            lj_factor_kT = int(m.group(1)) / 1e2  # “XX.XX × 4kT”
+            kT_value = lj_factor_kT
+            lj_label_base = fmt_kT(kT_value)
+        else:
+            lj_label_base = lj
+
+        # Discover shear_* directories
+        shear_dirs = [d for d in os.listdir(gpath) if re.match(r"shear_\d+$", d)]
+        if not shear_dirs:
+            continue
+        shear_dirs.sort(key=lambda s: int(s.split('_')[1]))
+
+        # Dynamic Lmax from first file we encounter for this LJ/gamma,
+        # then updated based on observed E_shear.
+        Lmax = None
+
+        xs, ys = [], []  # one y value per shear
+
+        for sd in shear_dirs:
+            shear_int = int(sd.split('_')[1])
+            sdir = os.path.join(gpath, sd)
+            run_dirs = [d for d in os.listdir(sdir) if re.match(r"run_\d+$", d)] or [""]
+
+            E_shear_runs = []  # E_run values for this shear
+
+            for r in run_dirs:
+                ddir = os.path.join(sdir, r) if r else sdir
+                f = os.path.join(ddir, "positions.npz")
+                if not os.path.isfile(f):
+                    continue
+                try:
+                    pos = np.load(f)["positions"]  # (T,N,D)
+                    if Lmax is None:
+                        N = pos.shape[1]
+                        Lmax = N * 2.0 * a
+                    E_run = _compute_max_pairwise_extension(pos, Lx_eff, Ly_eff, Lz_eff)
+                    E_shear_runs.append(E_run)
+                except Exception as e:
+                    print(f"Skip {f}: {e}")
+
+            if not E_shear_runs:
+                continue
+
+            # *** Only one value per shear: take the maximum over runs ***
+            E_shear = max(E_shear_runs)
+
+            # Update Lmax based on observed E_shear
+            if Lmax is None:
+                Lmax = E_shear
+            else:
+                Lmax = max(Lmax, E_shear)
+
+            x_val = shear_int  # shear rate in 1/s
+            xs.append(x_val)
+            ys.append(E_shear)
+
+        if not xs or Lmax is None:
+            continue
+
+        xs = np.array(xs, float)
+        ys = np.array(ys, float)
+
+        # sort by shear rate
+        order = np.argsort(xs)
+        xs, ys = xs[order], ys[order]
+
+        # Normalization: E_shear / Lmax
+        denom = Lmax
+        if denom <= 0 or not np.isfinite(denom):
+            print(f"[WARN] Skipping {lj_label_base}: invalid normalization (denom={denom})")
+            continue
+
+        y_norm = ys / denom
+
+        c = colors[i % len(colors)]
+
+        ax.plot(xs, y_norm, 'o-', lw=1.6, markersize=4, color=c)
+
+        any_curve = True
+
+    if not any_curve:
+        print(f"[INFO] No usable data for gamma={gamma_folder} under {base_dir}.")
+        return
+
+    # expected overlay for free case
+    if include_expected:
+        ax.plot(exp_x, exp_y, linestyle='--', color='black', linewidth=1.6,
+                marker='s', markersize=4, label="Schneider et al. (free)")
+        ax.fill_between(exp_x, exp_y - exp_s, exp_y + exp_s,
+                        color='black', alpha=0.12, linewidth=0)
+
+    ax.set_xlabel(r"Shear rate [s$^{-1}$]", fontsize=15)
+    ax.set_ylabel(r"$\hat{E}^{\max}_{free}$", fontsize=15)
+    ax.set_xscale("log")
+
+    # choose a sensible x-limit automatically (covers both your data and expected curve)
+    if ax.get_lines():
+        xmin = max(1e-1, min(ax.get_lines()[0].get_xdata()))
+        xmax = max([np.max(ln.get_xdata()) for ln in ax.get_lines()
+                    if len(ln.get_xdata()) > 0] + [2000.0])
+    else:
+        xmin, xmax = 1e-1, 2000.0
+
+    ax.set_xlim(xmin, xmax * 1.05)
+    ax.set_ylim(0, 1.2)
+    ax.legend(fontsize=9, frameon=False)
+    ax.grid(False)
+    plt.tight_layout()
+
+    if outname is None:
+        outname = f"free_extension_vs_shear_across_LJ_gamma_{int(round(gamma_val * 1e4)):05d}"
+        outname += "_maxpair_maxrun.png"
+    else:
+        if not outname.endswith(".png"):
+            outname += ".png"
 
     out_png = os.path.join(base_dir, outname)
     plt.savefig(out_png, dpi=300, bbox_inches='tight')
