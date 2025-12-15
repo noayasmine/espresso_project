@@ -44,68 +44,96 @@ def sample_points_min_dist_2d(n_points, bounds, min_dist, max_attempts=100000):
     return pts[:, 0], pts[:, 1]
 
 def compute_start_positions(config):
-    """ Computes positions of first monomers
+    """Computes positions of first monomers.
 
-    Returns 
-    start_positions (N_POLYMERS, 3)
+    Returns
+    -------
+    start_positions : (N_POLYMERS, 3)
     + adds start_positions to json file (config)
     """
     np.random.seed(config["simulation"]["SEED"])
     N_POLYMERS = config["simulation"]["N_POLYMERS"]
-    N_POLYMERS_FREE = config["simulation"]["N_POLYMERS_FREE"]
+
     a = config["physical"]["a"]
     AGRID = config["geometry"]["AGRID"]
     BOX_Lx = config["geometry"]["BOX_Lx"]
     BOX_Ly = config["geometry"]["BOX_Ly"]
-    BOX_Lz = config["geometry"]["BOX_Lz"] 
+    BOX_Lz = config["geometry"]["BOX_Lz"]
+    min_dist = 20.0 * a
+    offset = 0.5 * AGRID + a + 1e-07
+    # offset = 3 * AGRID + a + 1e-07
 
     if config["geometry"]["SPHERE"]:
-        # oversample to filter later
-        n_attempts = 10 * N_POLYMERS
-        center = np.array([25, 25])
-        radius = config["geometry"]["RADIUS_OBJECT"] + a # - AGRID / 2
-        lower_bounds = [1, 10]
-        upper_bounds = [60, 40]
-        points = np.random.uniform(lower_bounds, upper_bounds, (n_attempts, 2))
+        # ---- minimum distance in xy ----
+        
+        x_bounds = (20, 35)
+        y_bounds = (15,35)
 
-        mask = np.sum((points - center) ** 2, axis=1) >= radius ** 2
-        filtered_points = points[mask][:N_POLYMERS]
+        random_x, random_y = sample_points_min_dist_2d(N_POLYMERS, (x_bounds, y_bounds), min_dist)
 
-        random_x, random_y = filtered_points.T
-        # random_x, random_y = points.T
+        x = random_x.copy()
+        y = random_y.copy()
+
+        # ---- sphere geometry ----
+        xc = config["geometry"].get("SPHERE_CENTER_X", 25.0)
+        yc = config["geometry"].get("SPHERE_CENTER_Y", 25.0)
+        zc = config["geometry"].get("SPHERE_CENTER_Z",config["geometry"].get("RADIUS_OBJECT", 7.5))
+        zc += 0.5 * AGRID
+
+        R = float(config["geometry"]["RADIUS_OBJECT"])
+
+        dx = x - xc
+        dy = y - yc
+        r2_xy = dx*dx + dy*dy
+
+        inside = r2_xy <= R*R
+
+        # default: flat wall
+        z = np.full(N_POLYMERS, offset)
+
+        # lift points inside sphere footprint
+        if np.any(inside):
+            print("point inside sphere")
+            under = R*R - r2_xy[inside]
+            under = np.maximum(under, 0.0)
+
+            z_surf = zc + np.sqrt(under)
+            # z[inside] = z_surf
+            nx = dx[inside] / R
+            ny = dy[inside] / R
+            nz = (z_surf - zc) / R
+
+            # increased offset due to non perfect sphere
+            offset_sphere = 0.5 * AGRID + a + 1e-07
+            x[inside] = x[inside] + nx * offset_sphere
+            y[inside] = y[inside] + ny * offset_sphere
+            z[inside] = z_surf     + nz * offset_sphere
+
+        start_positions = np.stack([x, y, z], axis=1)
 
     elif N_POLYMERS == 1:
         random_x = np.array([BOX_Lx / 5])
         random_y = np.array([BOX_Ly / 2])
-    
+        z = np.full(N_POLYMERS, offset)
+        start_positions = np.stack([random_x, random_y, z], axis=1)
+
     elif N_POLYMERS == 2:
-        spacing = 6*a
+        spacing = 6 * a
         center_x = BOX_Lx / 4
         center_y = BOX_Ly / 2
         random_x = np.array([center_x, center_x])
         random_y = np.array([center_y - spacing / 2, center_y + spacing / 2])
-        
-    else:
-        min_dist = 10.0 * a
+        z = np.full(N_POLYMERS, offset)
+        start_positions = np.stack([random_x, random_y, z], axis=1)
 
-        # simple uniform box region in xy
+    else:
         x_bounds = (AGRID + 2.0 * a, BOX_Lx - (AGRID + 2.0 * a))
         y_bounds = (AGRID + 2.0 * a, BOX_Ly - (AGRID + 2.0 * a))
 
         random_x, random_y = sample_points_min_dist_2d(N_POLYMERS, (x_bounds, y_bounds), min_dist)
 
-    # place monomers just above the wall
-    # place monomers a (above the soft sphere potential)
-    z = np.full(N_POLYMERS, 0.5 * AGRID + a + 1e-07)
-    start_positions = np.stack([random_x, random_y, z], axis=1)
-
-    # put last n_polymer_free polymers with higher z
-    # if N_POLYMERS_free > 0:
-    #     z = np.full(N_POLYMERS, 0.5 * AGRID + a + 1e-07)
-    #     # z_free = np.random.uniform(low=0.5 * AGRID + a + 1e-07, high=BOX_Lz - (0.5 * AGRID + a + 1e-07), size=N_POLYMERS_free)
-    #     z_free = np.random.uniform(low=2*AGRID, high=BOX_Lz - (2*AGRID), size=N_POLYMERS_free)
-    #     z[-N_POLYMERS_free:] = z_free
-    #     start_positions = np.stack([random_x, random_y, z], axis=1)
+        z = np.full(N_POLYMERS, offset)
+        start_positions = np.stack([random_x, random_y, z], axis=1)
 
     config["simulation"]["START_POSITIONS"] = start_positions
     print("Positions first monomers:")
@@ -113,35 +141,100 @@ def compute_start_positions(config):
 
     return start_positions
 
-def load_polymer_positions(start_positions):
-    """ Takes initial positions of first monomers and loads file 
-    with coiled polymer positions, puts coiled polymer at each starting position
+def rotation_matrix_from_vectors(a, b):
+    """
+    Compute rotation matrix that rotates vector a onto vector b.
+    a, b must be normalized.
+    """
+    v = np.cross(a, b)
+    c = np.dot(a, b)
+    s = np.linalg.norm(v)
 
-    init_positions: (1, N_monomers, 3)
-    start_positions: (N_POLYMERS, 3)
+    if s < 1e-12:
+        # a and b are parallel (or antiparallel)
+        if c > 0:
+            return np.eye(3)  # no rotation
+        else:
+            # 180 degree rotation around any perpendicular axis
+            # choose x-axis unless collinear
+            axis = np.array([1.0, 0.0, 0.0])
+            if abs(a[0]) > 0.9:
+                axis = np.array([0.0, 1.0, 0.0])
+            v = np.cross(a, axis)
+            v /= np.linalg.norm(v)
+            return -np.eye(3) + 2 * np.outer(v, v)
 
-    Adds positions (N_POLYMERS, N_monomers, 3) to json file (config).
+    vx = np.array([[    0, -v[2],  v[1]],
+                   [ v[2],     0, -v[0]],
+                   [-v[1],  v[0],    0]])
+
+    R = np.eye(3) + vx + vx @ vx * ((1 - c) / (s * s))
+    return R
+
+def load_polymer_positions(start_positions, config):
+    """
+    Places pre-defined polymer conformations at start_positions.
+    Polymers whose start position lies on the sphere are rotated
+    so that they align with the local sphere normal.
     """
 
-    outdir = "./configs/initial_polymer_positions"
+    
     N_MONOMERS = config["physical"]["N_MONOMERS"]
     seed = config["simulation"]["SEED"]
+    k = int(config["physical"]["k"])
+
+    outdir = f"./configs/initial_polymer_positions_k_{k}"
+
     path_to_file = os.path.join(outdir, f"init_positions_{N_MONOMERS}_seed_{seed}.npz")
     print(f"Read out position file: {path_to_file}")
     data = np.load(path_to_file)
-    init_positions = data["positions"]
-    print(f"Shape positions file: {init_positions.shape}")
+    init_positions = data["positions"]      # (1, N_MONOMERS, 3)
 
-    # subtract first monomer so polymer is normalized to origin
-    origin = init_positions[0, 0]                   # (3,)
-    shifted = init_positions - origin               # (1, N_monomers, 3)
+    # normalize polymer to origin
+    origin = init_positions[0, 0]
+    shifted = init_positions - origin       # (1, N_MONOMERS, 3)
 
-    # broadcast: (1, N_monomers, 3) → (N_POLYMERS, N_monomers, 3)
-    positions = shifted + start_positions[:, None, :]  # broadcasting target positions
+    N_POLYMERS = start_positions.shape[0]
+    positions = np.zeros((N_POLYMERS, N_MONOMERS, 3))
+
+    # sphere geometry
+    sphere = config["geometry"]["SPHERE"]
+    xc = config["geometry"].get("SPHERE_CENTER_X", 25.0)
+    yc = config["geometry"].get("SPHERE_CENTER_Y", 25.0)
+    zc = config["geometry"].get("SPHERE_CENTER_Z",config["geometry"].get("RADIUS_OBJECT", 0.0))
+    zc += 0.5 * config["geometry"]["AGRID"]
+    R = float(config["geometry"]["RADIUS_OBJECT"])
+
+    ez = np.array([0.0, 0.0, 1.0])  # original polymer direction
+
+    for i in range(N_POLYMERS):
+        base = shifted[0]           # (N_MONOMERS, 3)
+        pos0 = start_positions[i]   # (3,)
+
+        polymer = base.copy()
+
+        if sphere:
+            dx = pos0[0] - xc
+            dy = pos0[1] - yc
+
+            # check if start position lies on sphere footprint (from top)
+            if dx*dx + dy*dy <= R*R:
+                print("Adding positions on sphere")
+                # compute normal at surface point
+                r_vec = pos0 - np.array([xc, yc, zc])
+                n = r_vec / np.linalg.norm(r_vec)
+
+                # rotation that maps +z to normal
+                Rmat = rotation_matrix_from_vectors(ez, n)
+
+                polymer = polymer @ Rmat.T
+
+        # translate polymer to its start position
+        positions[i] = polymer + pos0
+
     config["simulation"]["POSITIONS"] = positions
     print("Added positions with shape:")
     print(positions.shape)
-    return 
 
 def add_polymer_positions(config):
     start_positions = compute_start_positions(config)
@@ -156,21 +249,6 @@ def add_polymer_positions(config):
 
     distribution_type = config["simulation"].get("DISTRIBUTION", "UNIFORM")
     std_dev_monomer_direction = config["simulation"]["stdev_initial_pos"]
-
-    # elif distribution_type == "NORMAL":
-    #     std_dev = config["simulation"].get("STD_MONOMERS", 30)
-    #     raw_counts = np.random.normal(loc=N_MONOMERS, scale=std_dev, size=N_POLYMERS)
-    #     monomer_counts = np.clip(np.round(raw_counts), min_monomers, None).astype(int)
-
-    # elif distribution_type == "SKEWED":
-    #     min_monomers = config["simulation"].get("MIN_MONOMERS", 40)
-    #     # Skewed right (longer tail to the right), using exponential distribution
-    #     scale = std_dev  # bigger means more skew
-    #     skewed = np.random.exponential(scale=scale, size=N_POLYMERS)
-    #     monomer_counts = np.round(skewed + min_monomers).astype(int)
-
-    # else:
-    #     raise ValueError(f"Unsupported distribution type: {distribution_type}")
     
     if not COILED:
         monomer_counts = np.full(N_POLYMERS, N_MONOMERS, dtype=int)
@@ -205,7 +283,7 @@ def add_polymer_positions(config):
         config["simulation"]["POSITIONS"] = positions
 
     if COILED and not COMPUTE_POSITIONS:
-        load_polymer_positions(start_positions)
+        load_polymer_positions(start_positions, config)
 
 def add_timeloops_from_gridsize(config):
     """ Calculate number of loops for specified number of 
@@ -419,19 +497,17 @@ if __name__ == "__main__":
     
     if run_type == "experiment":
         shear = float(sys.argv[2])
-        # config["simulation"]["SELF_ASSOCIATE"] = sys.argv[3].lower() == "true"
-        config["simulation"]["SELF_ASSOCIATE"] = False
+        #config["simulation"]["SELF_ASSOCIATE"] = sys.argv[3].lower() == "true"
         N_monomers = int(sys.argv[3])
-
         save_dir = str(sys.argv[4])
 
-        if config["simulation"]["SELF_ASSOCIATE"]:
-            # config["output"]["DIRECTORY"] = f"./{save_dir}/selfassociation/"
-            config["output"]["DIRECTORY"] = f"./{save_dir}/N_monomers_{int(N_monomers)}/"
-        else:
-            # config["output"]["DIRECTORY"] = f"./{save_dir}/no_selfassociation/"
-            config["output"]["DIRECTORY"] = f"./{save_dir}/N_monomers_{int(N_monomers)}/"
-    
+        # if config["simulation"]["SELF_ASSOCIATE"]:
+        #     config["output"]["DIRECTORY"] = f"./{save_dir}/selfassociation/"
+
+        # else:
+        #     config["output"]["DIRECTORY"] = f"./{save_dir}/no_selfassociation/"
+        config["output"]["DIRECTORY"] = f"./{save_dir}/N_monomers_{N_monomers}/"
+
         config["simulation"]["SAVE_VTK"] = True
         config["simulation"]["SHEAR"] = shear
         config["simulation"]["TOTAL_TIME"] = 0.001
@@ -440,16 +516,17 @@ if __name__ == "__main__":
         config["simulation"]["COMPUTE_POSITIONS"] = True
 
         config["simulation"]["N_POLYMERS"] = 1
-        config["simulation"]["MINIMIZATION_STEPS"] = 800
-        config["physical"]["k"] = 10
+        config["simulation"]["MINIMIZATION_STEPS"] = 600
+        config["physical"]["k"] = 1000
         config["physical"]["N_MONOMERS"] = N_monomers
         config["simulation"]["SEED"] = 1
 
+        #config["output"]["DIRECTORY"] = f"./{save_dir}/selfassociation/"
+        # config["simulation"]["LB_TIME_STEP"] = 0.001
         config["simulation"]["LB_TIME_STEP"] = 0.001
-        # config["simulation"]["SELF_ASSOCIATE"] = True
-
+        config["simulation"]["TIME_STEP"] = 0.001
         add_timeloops_from_gridsize(config)
-        add_dependent_parameters(config,LJ_strength=18)
+        add_dependent_parameters(config)
         add_polymer_positions(config)
     
     if run_type == "experiment_sphere":
@@ -461,40 +538,27 @@ if __name__ == "__main__":
 
         if config["simulation"]["SELF_ASSOCIATE"]:
             config["output"]["DIRECTORY"] = f"./{save_dir}/selfassociation/"
+
         else:
             config["output"]["DIRECTORY"] = f"./{save_dir}/no_selfassociation/"
     
         config["simulation"]["SAVE_VTK"] = True
         config["simulation"]["SHEAR"] = shear
-        config["simulation"]["TOTAL_TIME"] = 0.05
+        config["simulation"]["TOTAL_TIME"] = 0.02
         config["simulation"]["COMPUTE_POSITIONS"] = False
-        config["simulation"]["SEED"] = 42
+        config["simulation"]["SEED"] = 1
 
-        config["simulation"]["N_POLYMERS"] = 1
-        # config["simulation"]["N_POLYMERS"] = 1
+        config["simulation"]["N_POLYMERS"] = 3
         config["geometry"]["BOX_Lx"] = 100
         config["geometry"]["BOX_Ly"] = 50
         config["geometry"]["BOX_Lz"] = 30
+        config["geometry"]["AGRID"] = 1
         config["geometry"]["SPHERE"] = True
-        config["physical"]["k"] = 100
-        config["physical"]["N_MONOMERS"] = 120
-        # config["physical"]["N_MONOMERS"] = 50
-        # N_POLYMERS_FREE <= N_POLYMERS
-        # config["simulation"]["N_POLYMERS_FREE"] = 20
-        # config["simulation"]["DISTRIBUTION"] = "NORMAL"
+        config["physical"]["k"] = 1000
+        config["physical"]["N_MONOMERS"] = 60
 
-        if config["physical"]["N_MONOMERS"] > 150:
-            config["simulation"]["MINIMIZATION_STEPS"] = 600
-            config["simulation"]["TIME_STEP"] = 0.001
-            config["simulation"]["LB_TIME_STEP"] = 0.001
-
-        if 150 >= config["physical"]["N_MONOMERS"] > 50:
-            config["simulation"]["MINIMIZATION_STEPS"] = 400
-            config["simulation"]["TIME_STEP"] = 0.001
-            config["simulation"]["LB_TIME_STEP"] = 0.001
-
-        if config["physical"]["N_MONOMERS"] <= 50:
-            config["simulation"]["MINIMIZATION_STEPS"] = 200
+        config["simulation"]["LB_TIME_STEP"] = 0.001
+        config["simulation"]["TIME_STEP"] = 0.001
         
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config)

@@ -134,108 +134,41 @@ def compute_tensile_forces_general(total_forces,drag_forces,N_POLYMERS,N_MONOMER
 
     return T.reshape(-1, 3)
 
-def compute_fene_tensile_forces(positions,N_POLYMERS,N_MONOMERS,k,r_0,d_r_max):
+
+
+def compute_fene_tensile_forces(positions, N_POLYMERS, N_MONOMERS, k, r_0, d_r_max):
     """
-    Compute vector FENE tensile forces and return them per monomer.
+    Compute scalar and vector FENE tensile forces per monomer.
 
     Returns
     -------
-    tensile_forces_flat : (N_POLYMERS*N_MONOMERS, 3)
-        Vector tensile forces per monomer.
-        Monomer i gets the force from the bond (i -> i+1).
-        Last monomer in each polymer gets [0,0,0].
+    tensile_scalar_flat : (N_POLYMERS*N_MONOMERS,)
+    tensile_vector_flat : (N_POLYMERS*N_MONOMERS, 3)
     """
-    # reshape positions
+
     pos = positions.reshape(N_POLYMERS, N_MONOMERS, 3)
 
-    # bond vectors r_vec[p,i] = pos[p,i+1] - pos[p,i]
-    r_vec = pos[:, 1:, :] - pos[:, :-1, :]        # (P, M-1, 3)
+    r_vec = pos[:, 1:, :] - pos[:, :-1, :]
+    r = np.linalg.norm(r_vec, axis=-1)
+    x = r - r_0
 
-    # bond lengths
-    r = np.linalg.norm(r_vec, axis=-1)            # (P, M-1)
-    x = r - r_0                                   # overextension
-
-    # scalar FENE tension (zero if compressed or 0)
     F_mag = np.zeros_like(r)
-    # mask = (x < d_r_max)
-    # xv = x[mask]
-    # F_mag[mask] = k * xv / (1.0 - (xv / d_r_max)**2)
-    F_mag = k * x / (1.0 - (x / d_r_max)**2)
+    valid = np.abs(x) < d_r_max
+    F_mag[valid] = k * x[valid] / (1.0 - (x[valid] / d_r_max)**2)
 
-    # # unit vectors
-    # r_expanded = r[:, :, None]                    # (P, M-1, 1)
-    # t_hat = np.zeros_like(r_vec)
-    # nonzero = r > 0
-    # t_hat[nonzero] = r_vec[nonzero] / r_expanded[nonzero]
+    t_hat = np.zeros_like(r_vec)
+    nonzero = r > 0
+    t_hat[nonzero] = r_vec[nonzero] / r[nonzero, None]
 
-    # # vector tensile forces on monomer i from bond (i→i+1)
-    # F_vec_bonds = F_mag[..., None] * t_hat        # (P, M-1, 3)
+    F_vec_bonds = F_mag[..., None] * t_hat
 
-    # build per-monomer forces (last monomer has zero force)
-    tensile = np.zeros((N_POLYMERS, N_MONOMERS))
-    tensile[:, :-1] = F_mag              # assign bond-force to monomer i
+    tensile_scalar = np.zeros((N_POLYMERS, N_MONOMERS))
+    tensile_vector = np.zeros((N_POLYMERS, N_MONOMERS, 3))
 
-    # flatten
-    tensile_flat = tensile.reshape(-1)
+    tensile_scalar[:, :-1] = F_mag
+    tensile_vector[:, :-1, :] = F_vec_bonds
 
-    return tensile_flat
-
-def compute_tensile_forces_along_chain(drag_forces, positions, N_POLYMERS, N_MONOMERS):
-    """
-    Compute tensile forces per monomer by summing downstream drag forces
-    projected along the local chain direction at each monomer.
-
-    Parameters
-    ----------
-    drag_forces : (N_POLYMERS*N_MONOMERS, 3)
-        Drag forces per monomer (from lb_drag_forces).
-    positions   : (N_POLYMERS*N_MONOMERS, 3)
-        Monomer positions in contour order.
-    N_POLYMERS  : int
-    N_MONOMERS  : int
-
-    Returns
-    -------
-    tensile_flat : (N_POLYMERS*N_MONOMERS, 3)
-        Vector tensile force per monomer.
-        For monomer i = 0..M-2 of each polymer:
-          - Local tangent is bond(i -> i+1).
-          - T_i corresponds to tension carried through that bond:
-              T_i = sum_{j=i+1..M-1} F_drag_j projected onto bond(i -> i+1).
-        For monomer i = M-1 (free end):
-          T_{M-1} = 0.
-    """
-    P = int(N_POLYMERS)
-    M = int(N_MONOMERS)
-
-    DF = drag_forces.reshape(P, M, 3)
-    pos = positions.reshape(P, M, 3)
-
-    tensile = np.zeros((P, M, 3))
-
-    for p in range(P):
-        # i = 0 .. M-2: tension through bond i -> i+1
-        for i in range(0, M - 1):
-            # Local chain direction from monomer i to i+1
-            bond_vec = pos[p, i+1] - pos[p, i]
-            norm_bond = np.linalg.norm(bond_vec)
-            if norm_bond == 0.0:
-                # Degenerate case: no well-defined direction
-                continue
-
-            t_hat = bond_vec / norm_bond
-
-            # Sum downstream drag projected onto t_hat
-            # j = i+1 .. M-1
-            scalar_tension = 0.0
-            for j in range(i + 1, M):
-                scalar_tension += np.dot(DF[p, j], t_hat)
-
-            tensile[p, i] = scalar_tension * t_hat
-
-        # monomer M-1 stays zero (free end)
-
-    return tensile.reshape(-1, 3)
+    return tensile_scalar.reshape(-1), tensile_vector.reshape(-1, 3)
 
 def add_tensile_forces_to_vtk_scalars(vtk_path, tensile_force_scalar):
     """
@@ -334,45 +267,21 @@ def add_tensile_forces_to_vtk(vtk_path, tensile_forces):
     with open(vtk_path, "w") as f:
         f.writelines(new_lines)
 
-def add_bonds(system, exceeding_ids, fene, type_dictionary, distance, type_to_ids, existing_pairs, degree):
+def add_bonds(system, exceeding_ids, fene, type_dictionary, distance, type_to_ids, bonds, degree):
     """
     Create FENE bonds between particles that:
-      - are within 'distance' (via get_neighbors),
-      - belong to different polymers (different particle type),
-      - are not already bonded in either direction,
-      - and respect a max-2-bonds-per-particle rule.
-
-    Parameters
-    ----------
-    system : espressomd.System
-    exceeding_ids : array-like of int
-        Particle IDs whose net tensile force exceeded the threshold.
-    fene : object
-        Preconfigured FENE interaction.
-    type_dictionary : dict[int, int]
-        Maps particle id -> particle type (polymer id).
-    distance : float
-        Neighbor cutoff radius.
-    type_to_ids : dict[int, set[int]]
-        Precomputed mapping: type -> set of particle ids.
-    existing_pairs : set[frozenset[int, int]]
-        Global set of existing bonds (unordered pairs). Updated in-place.
-    degree : dict[int, int]
-        Bond count per particle. Updated in-place.
-
-    Returns
-    -------
-    added_pairs : list[tuple[int, int]]
-        List of newly created bonds (pid, pid_neighbor).
+      - are within 'distance',
+      - belong to different polymers,
+      - are not already bonded in THIS direction,
+      - and respect a max-3-bonds-per-particle rule.
     """
 
     exc_ids_set = set(int(i) for i in exceeding_ids)
     print(f"exceeding ids: {exc_ids_set}")
-    added_pairs = []
+    added_bonds = []
 
     for pid in exc_ids_set:
-        # print(f"{pid} exceeded threshold")
-        # Respect max-2 rule for this particle
+        # Respect max-bond rule for this particle
         if degree[pid] >= 3:
             print(f"Particle {pid} already has three bonds.")
             continue
@@ -389,35 +298,73 @@ def add_bonds(system, exceeding_ids, fene, type_dictionary, distance, type_to_id
         candidates = neighbor_ids_set - same_type_ids
 
         for pid_neighbor in candidates:
-            # Respect max-2 rule on neighbor as well
-            if degree[pid_neighbor] >= 3:
-                continue
 
-            pair = frozenset((pid, pid_neighbor))
-
-            # if pair already in existing_pairs, there is already a bond
-            # in either direction between these two. skip.
-            if pair in existing_pairs:
-                print(f"This pair {pair} is already bonded")
+            # directed bond check
+            if pid_neighbor in bonds[pid]:
+                print(f"Directed bond {pid} -> {pid_neighbor} already exists")
                 continue
 
             # add bond
-            print(f"Add bond between {pair}")
+            print(f"Add directed bond {pid} -> {pid_neighbor}")
             p_handle_neighbor = system.part.by_id(pid_neighbor)
             p_handle.add_bond((fene, p_handle_neighbor))
 
             # update global state
-            existing_pairs.add(pair)
+            bonds[pid].add(pid_neighbor)
             degree[pid] += 1
-            degree[pid_neighbor] += 1
-            added_pairs.append((pid, pid_neighbor))
 
-            # if pid now has 2 bonds, don't add more from it
-            if degree[pid] >= 2:
+            added_bonds.append((pid, pid_neighbor))
+
+            # stop if pid reached its limit
+            if degree[pid] >= 3:
                 break
 
-    print(f"Added pairs:{added_pairs}")
-    return added_pairs
+    print(f"Added bonds: {added_bonds}")
+    return added_bonds
+
+
+def remove_bonds(system, below_ids, fene, bonds, degree, type_dictionary):
+    """
+    Remove directed bonds pid -> pid_neighbor ONLY if pid and pid_neighbor are NOT in the same polymer (different type).
+
+    below_ids: particle ids whose tensile force is below threshold (or below remove-threshold).
+    bonds: directed adjacency (outgoing) dict: bonds[i] = set(j) meaning i -> j exists
+    degree: outgoing bond count (degree[i] == len(bonds[i]))
+    type_dictionary: maps particle id -> particle type (polymer id)
+    """
+
+    below_set = set(int(i) for i in below_ids)
+    removed_bonds = []
+
+    for pid in below_set:
+        if pid not in bonds or len(bonds[pid]) == 0:
+            continue
+
+        p_handle = system.part.by_id(pid)
+        pid_type = type_dictionary[pid]
+
+        # copy because we'll mutate bonds[pid]
+        outgoing = list(bonds[pid])
+
+        for pid_neighbor in outgoing:
+            # only remove self-association bonds: cross-polymer (different type)
+            if type_dictionary[pid_neighbor] == pid_type:
+                continue
+
+            p_handle_neighbor = system.part.by_id(pid_neighbor)
+
+            # remove in ESPResSo
+            p_handle.delete_bond((fene, p_handle_neighbor))
+
+            # update bookkeeping (directed!)
+            bonds[pid].remove(pid_neighbor)
+            degree[pid] -= 1
+            removed_bonds.append((pid, pid_neighbor))
+    
+    print(f"Removed bonds: {removed_bonds}")
+
+    return removed_bonds
+
 
 def build_polymers(system, n_monomers, n_polymers, n_polymers_free, start_positions, positions, fene, bond_length, SEED, TETHERED=True, COILED=True, COMPUTE_POSITIONS=True):
     
@@ -550,12 +497,12 @@ def run_simulation(params):
 
     if geo_sphere:
         logging.info("Adding Sphere.")
-        # add sphere as constraint 0.5 agrid from the wall
-        sphere_constraint = espressomd.shapes.Sphere(radius=radius_object, center=[25, 25, radius_object + 0.5 * AGRID], direction=1)
-        # particle type per polymer range from 0 to N_POLYMER-1, giving LB shapes "particle type" N_POLYMERS
-        system.constraints.add(particle_type=N_POLYMERS, penetrable=False, shape=sphere_constraint)
+        # # add sphere as constraint 0.5 agrid from the wall
+        # sphere_constraint = espressomd.shapes.Sphere(radius=radius_object, center=[25, 25, radius_object + 0.5 * AGRID], direction=1)
+        # # particle type per polymer range from 0 to N_POLYMER-1, giving LB shapes "particle type" N_POLYMERS
+        # system.constraints.add(particle_type=N_POLYMERS, penetrable=False, shape=sphere_constraint)
         
-        sphere = espressomd.shapes.Sphere(radius=radius_object - 0.5 * AGRID, center=[25, 25, radius_object + 0.5 * AGRID])
+        sphere = espressomd.shapes.Sphere(radius=radius_object, center=[25, 25, radius_object + 0.5 * AGRID])
         system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=sphere, velocity=[0, 0, 0]))
 
     if geo_microcontraction:
@@ -575,7 +522,7 @@ def run_simulation(params):
     type_dictionary, type_to_ids = build_polymers(system, N_MONOMERS, N_POLYMERS, N_POLYMERS_FREE, START_POSITIONS, POSITIONS, fene, r_0, SEED, \
         TETHERED, COILED, COMPUTE_POSITIONS)
     
-    # Add soft sphere potential between wall and particles
+    # Add soft sphere potential between walls and particles
     for particle_type in all_types:
         system.non_bonded_inter[particle_type, N_POLYMERS].soft_sphere.set_params(a=1e-3, n=1.2, offset=0, cutoff=phys["a"])
     
@@ -632,27 +579,29 @@ def run_simulation(params):
     drag_forces_traj = np.empty((int(LOOPS), int(N_POLYMERS * N_MONOMERS), 3), dtype=np.float32)
     tensile_forces_traj = np.empty((int(LOOPS), int(N_POLYMERS * N_MONOMERS)), dtype=np.float32)
 
-    WINDOW = 10
+    WINDOW = 20
 
-    # Build global view of existing bonds (unordered pairs) + degrees
-    existing_pairs = set()          # frozenset({i, j})
-    degree = defaultdict(int)       # how many bonds each particle already has
+    # Directed bond dictionary
+    bonds = defaultdict(set)     # i -> {j, k, ...}
+    degree = defaultdict(int)    # out-degree (or total degree initially)
 
     for p in system.part:
         pid = int(p.id)
         for _, partner in p.bonds:
             qid = int(getattr(partner, "id", partner))
-            pair = frozenset((pid, qid))
-            if pair not in existing_pairs:
-                existing_pairs.add(pair)
-                degree[pid] += 1
-                degree[qid] += 1   # we treat bond as undirected, even if stored once
-    
-    print("The degree dict:")
-    print(degree)
-    print("The existing pairs set:")
-    print(existing_pairs)
 
+            # add both directions (initially symmetric)
+            if qid not in bonds[pid]:
+                bonds[pid].add(qid)
+                degree[pid] += 1
+
+            if pid not in bonds[qid]:
+                bonds[qid].add(pid)
+                degree[qid] += 1
+    
+    print(bonds)
+    print(degree)
+    print(system.actors.active_actors)
     if save_VTK:
         for i in range(int(LOOPS)):
             if i==1:
@@ -672,7 +621,7 @@ def run_simulation(params):
 
             ###### compute tensile forces from the fene over extension ######
             positions = espressomd.observables.ParticlePositions(ids=particle_ids).calculate()
-            net_tensile_forces = compute_fene_tensile_forces(positions,N_POLYMERS,N_MONOMERS,k=k,r_0=r_0,d_r_max=d_r_max)
+            net_tensile_forces, vec_tensile_forces = compute_fene_tensile_forces(positions,N_POLYMERS,N_MONOMERS,k=k,r_0=r_0,d_r_max=d_r_max)
 
             # net_tensile = np.linalg.norm(tensile_forces, axis=1)
             tensile_forces_traj[i] = net_tensile_forces
@@ -689,7 +638,12 @@ def run_simulation(params):
                 R_CAPTURE = 2 * a
 
                 added_pairs = add_bonds(system, exceeding_ids, fene=fene, type_dictionary=type_dictionary, distance=R_CAPTURE,
-                    type_to_ids=type_to_ids, existing_pairs=existing_pairs, degree=degree)
+                    type_to_ids=type_to_ids, bonds=bonds, degree=degree)
+                
+                #below_mask = tensile_avg < FORCE_THRESHOLD   # or use hysteresis threshold
+                #below_ids = particle_ids[below_mask]
+
+                #removed_pairs = remove_bonds(system, below_ids, fene=fene, bonds=bonds, degree=degree, type_dictionary=type_dictionary)
 
     if not save_VTK:
         for i in range(int(LOOPS)):
