@@ -104,7 +104,7 @@ def compute_start_positions(config):
             nz = (z_surf - zc) / R
 
             # increased offset due to non perfect sphere
-            offset_sphere = 0.5 * AGRID + a + 1e-07
+            offset_sphere = AGRID + a + 1e-07
             x[inside] = x[inside] + nx * offset_sphere
             y[inside] = y[inside] + ny * offset_sphere
             z[inside] = z_surf     + nz * offset_sphere
@@ -150,20 +150,6 @@ def rotation_matrix_from_vectors(a, b):
     c = np.dot(a, b)
     s = np.linalg.norm(v)
 
-    if s < 1e-12:
-        # a and b are parallel (or antiparallel)
-        if c > 0:
-            return np.eye(3)  # no rotation
-        else:
-            # 180 degree rotation around any perpendicular axis
-            # choose x-axis unless collinear
-            axis = np.array([1.0, 0.0, 0.0])
-            if abs(a[0]) > 0.9:
-                axis = np.array([0.0, 1.0, 0.0])
-            v = np.cross(a, axis)
-            v /= np.linalg.norm(v)
-            return -np.eye(3) + 2 * np.outer(v, v)
-
     vx = np.array([[    0, -v[2],  v[1]],
                    [ v[2],     0, -v[0]],
                    [-v[1],  v[0],    0]])
@@ -177,11 +163,11 @@ def load_polymer_positions(start_positions, config):
     Polymers whose start position lies on the sphere are rotated
     so that they align with the local sphere normal.
     """
-
     
     N_MONOMERS = config["physical"]["N_MONOMERS"]
     seed = config["simulation"]["SEED"]
     k = int(config["physical"]["k"])
+    AGRID = config["geometry"]["AGRID"]
 
     outdir = f"./configs/initial_polymer_positions_k_{k}"
 
@@ -204,6 +190,7 @@ def load_polymer_positions(start_positions, config):
     zc = config["geometry"].get("SPHERE_CENTER_Z",config["geometry"].get("RADIUS_OBJECT", 0.0))
     zc += 0.5 * config["geometry"]["AGRID"]
     R = float(config["geometry"]["RADIUS_OBJECT"])
+    print(xc,yc,zc)
 
     ez = np.array([0.0, 0.0, 1.0])  # original polymer direction
 
@@ -218,12 +205,12 @@ def load_polymer_positions(start_positions, config):
             dy = pos0[1] - yc
 
             # check if start position lies on sphere footprint (from top)
-            if dx*dx + dy*dy <= R*R:
-                print("Adding positions on sphere")
+            if dx*dx + dy*dy <= R*R + AGRID:
+                print("Rotation for sphere")
                 # compute normal at surface point
                 r_vec = pos0 - np.array([xc, yc, zc])
                 n = r_vec / np.linalg.norm(r_vec)
-
+                print(n)
                 # rotation that maps +z to normal
                 Rmat = rotation_matrix_from_vectors(ez, n)
 
@@ -497,28 +484,28 @@ if __name__ == "__main__":
     
     if run_type == "experiment":
         shear = float(sys.argv[2])
-        #config["simulation"]["SELF_ASSOCIATE"] = sys.argv[3].lower() == "true"
-        N_monomers = int(sys.argv[3])
+        config["simulation"]["SELF_ASSOCIATE"] = sys.argv[3].lower() == "true"
+        #N_monomers = int(sys.argv[3])
         save_dir = str(sys.argv[4])
 
-        # if config["simulation"]["SELF_ASSOCIATE"]:
-        #     config["output"]["DIRECTORY"] = f"./{save_dir}/selfassociation/"
+        if config["simulation"]["SELF_ASSOCIATE"]:
+            config["output"]["DIRECTORY"] = f"./{save_dir}/selfassociation/"
 
-        # else:
-        #     config["output"]["DIRECTORY"] = f"./{save_dir}/no_selfassociation/"
-        config["output"]["DIRECTORY"] = f"./{save_dir}/N_monomers_{N_monomers}/"
+        else:
+            config["output"]["DIRECTORY"] = f"./{save_dir}/no_selfassociation/"
+        # config["output"]["DIRECTORY"] = f"./{save_dir}/N_monomers_{N_monomers}/"
 
         config["simulation"]["SAVE_VTK"] = True
         config["simulation"]["SHEAR"] = shear
-        config["simulation"]["TOTAL_TIME"] = 0.001
+        config["simulation"]["TOTAL_TIME"] = 0.02
         config["FORCE_THRESHOLD"] =  0.01
 
-        config["simulation"]["COMPUTE_POSITIONS"] = True
+        config["simulation"]["COMPUTE_POSITIONS"] = False
 
-        config["simulation"]["N_POLYMERS"] = 1
-        config["simulation"]["MINIMIZATION_STEPS"] = 600
+        config["simulation"]["N_POLYMERS"] = 70
+        # config["simulation"]["MINIMIZATION_STEPS"] = 600
         config["physical"]["k"] = 1000
-        config["physical"]["N_MONOMERS"] = N_monomers
+        config["physical"]["N_MONOMERS"] = 50
         config["simulation"]["SEED"] = 1
 
         #config["output"]["DIRECTORY"] = f"./{save_dir}/selfassociation/"
@@ -545,7 +532,7 @@ if __name__ == "__main__":
         config["simulation"]["SAVE_VTK"] = True
         config["simulation"]["SHEAR"] = shear
         config["simulation"]["TOTAL_TIME"] = 0.02
-        config["simulation"]["COMPUTE_POSITIONS"] = False
+        config["simulation"]["COMPUTE_POSITIONS"] = True
         config["simulation"]["SEED"] = 1
 
         config["simulation"]["N_POLYMERS"] = 3
@@ -555,14 +542,13 @@ if __name__ == "__main__":
         config["geometry"]["AGRID"] = 1
         config["geometry"]["SPHERE"] = True
         config["physical"]["k"] = 1000
-        config["physical"]["N_MONOMERS"] = 60
+        config["physical"]["N_MONOMERS"] = 50
 
         config["simulation"]["LB_TIME_STEP"] = 0.001
         config["simulation"]["TIME_STEP"] = 0.001
         
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config)
-        print("add positions")
         add_polymer_positions(config)
 
     if run_type == "experiment_microcontraction":
