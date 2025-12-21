@@ -169,8 +169,8 @@ def load_polymer_positions(start_positions, config):
     k = int(config["physical"]["k"])
     AGRID = config["geometry"]["AGRID"]
 
-    outdir = f"./configs/initial_polymer_positions_k_{k}"
-
+    #outdir = f"./configs/initial_polymer_positions_k_{k}"
+    outdir = f"./configs/initial_polymer_positions_k_10"
     path_to_file = os.path.join(outdir, f"init_positions_{N_MONOMERS}_seed_{seed}.npz")
     print(f"Read out position file: {path_to_file}")
     data = np.load(path_to_file)
@@ -485,7 +485,7 @@ if __name__ == "__main__":
     if run_type == "experiment":
         shear = float(sys.argv[2])
         config["simulation"]["SELF_ASSOCIATE"] = sys.argv[3].lower() == "true"
-        #N_monomers = int(sys.argv[3])
+        # N_monomers = int(sys.argv[3])
         save_dir = str(sys.argv[4])
 
         if config["simulation"]["SELF_ASSOCIATE"]:
@@ -497,18 +497,18 @@ if __name__ == "__main__":
 
         config["simulation"]["SAVE_VTK"] = True
         config["simulation"]["SHEAR"] = shear
-        config["simulation"]["TOTAL_TIME"] = 0.02
+        config["simulation"]["TOTAL_TIME"] = 0.2
         config["FORCE_THRESHOLD"] =  0.01
 
         config["simulation"]["COMPUTE_POSITIONS"] = False
 
-        config["simulation"]["N_POLYMERS"] = 70
+        config["simulation"]["N_POLYMERS"] = 1
         # config["simulation"]["MINIMIZATION_STEPS"] = 600
         config["physical"]["k"] = 1000
-        config["physical"]["N_MONOMERS"] = 50
+        config["physical"]["N_MONOMERS"] = 100
         config["simulation"]["SEED"] = 1
 
-        #config["output"]["DIRECTORY"] = f"./{save_dir}/selfassociation/"
+        # config["output"]["DIRECTORY"] = f"./{save_dir}/selfassociation/"
         # config["simulation"]["LB_TIME_STEP"] = 0.001
         config["simulation"]["LB_TIME_STEP"] = 0.001
         config["simulation"]["TIME_STEP"] = 0.001
