@@ -59,7 +59,7 @@ def compute_start_positions(config):
     BOX_Lx = config["geometry"]["BOX_Lx"]
     BOX_Ly = config["geometry"]["BOX_Ly"]
     BOX_Lz = config["geometry"]["BOX_Lz"]
-    min_dist = 20.0 * a
+    min_dist = 15.0 * a
     offset = 0.5 * AGRID + a + 1e-07
     # offset = 3 * AGRID + a + 1e-07
 
@@ -169,16 +169,16 @@ def load_polymer_positions(start_positions, config):
     k = int(config["physical"]["k"])
     AGRID = config["geometry"]["AGRID"]
 
-    #outdir = f"./configs/initial_polymer_positions_k_{k}"
-    outdir = f"./configs/initial_polymer_positions_k_10"
-    path_to_file = os.path.join(outdir, f"init_positions_{N_MONOMERS}_seed_{seed}.npz")
-    print(f"Read out position file: {path_to_file}")
-    data = np.load(path_to_file)
-    init_positions = data["positions"]      # (1, N_MONOMERS, 3)
+    outdir = f"./configs/initial_polymer_positions_k_{k}"
+    # outdir = f"./configs/initial_polymer_positions_k_1000"
+    # path_to_file = os.path.join(outdir, f"init_positions_{N_MONOMERS}_seed_{seed}.npz")
+    # print(f"Read out position file: {path_to_file}")
+    # data = np.load(path_to_file)
+    # init_positions = data["positions"]      # (1, N_MONOMERS, 3)
 
-    # normalize polymer to origin
-    origin = init_positions[0, 0]
-    shifted = init_positions - origin       # (1, N_MONOMERS, 3)
+    # # normalize polymer to origin
+    # origin = init_positions[0, 0]
+    # shifted = init_positions - origin       # (1, N_MONOMERS, 3)
 
     N_POLYMERS = start_positions.shape[0]
     positions = np.zeros((N_POLYMERS, N_MONOMERS, 3))
@@ -193,14 +193,27 @@ def load_polymer_positions(start_positions, config):
     print(xc,yc,zc)
 
     ez = np.array([0.0, 0.0, 1.0])  # original polymer direction
-
+   
     for i in range(N_POLYMERS):
+        # random_seed = np.random.randint(0,10)
+        random_seed = 1
+
+        path_to_file = os.path.join(outdir, f"init_positions_{N_MONOMERS}_seed_{random_seed}.npz")
+        print(f"Read out position file: {path_to_file}")
+        data = np.load(path_to_file)
+        init_positions = data["positions"]      # (1, N_MONOMERS, 3)
+
+        # normalize polymer to origin
+        origin = init_positions[0, 0]
+        shifted = init_positions - origin       # (1, N_MONOMERS, 3)
+
         base = shifted[0]           # (N_MONOMERS, 3)
         pos0 = start_positions[i]   # (3,)
 
         polymer = base.copy()
 
         if sphere:
+            # this part of code doesnt work properly, it is not rotating the polymers properly
             dx = pos0[0] - xc
             dy = pos0[1] - yc
 
@@ -484,32 +497,58 @@ if __name__ == "__main__":
     
     if run_type == "experiment":
         shear = float(sys.argv[2])
-        config["simulation"]["SELF_ASSOCIATE"] = sys.argv[3].lower() == "true"
+        # config["simulation"]["SELF_ASSOCIATE"] = sys.argv[3].lower() == "true"
         # N_monomers = int(sys.argv[3])
+        seed = int(sys.argv[3])
         save_dir = str(sys.argv[4])
 
-        if config["simulation"]["SELF_ASSOCIATE"]:
-            config["output"]["DIRECTORY"] = f"./{save_dir}/selfassociation/"
+        # if config["simulation"]["SELF_ASSOCIATE"]:
+        #     config["output"]["DIRECTORY"] = f"./{save_dir}/selfassociation/"
 
-        else:
-            config["output"]["DIRECTORY"] = f"./{save_dir}/no_selfassociation/"
-        # config["output"]["DIRECTORY"] = f"./{save_dir}/N_monomers_{N_monomers}/"
+        # else:
+        #     config["output"]["DIRECTORY"] = f"./{save_dir}/no_selfassociation/"
+        config["output"]["DIRECTORY"] = f"./{save_dir}/N_monomers_{50}_seed_{seed}/"
 
         config["simulation"]["SAVE_VTK"] = True
         config["simulation"]["SHEAR"] = shear
-        config["simulation"]["TOTAL_TIME"] = 0.2
+        config["simulation"]["TOTAL_TIME"] = 0.01
+        config["FORCE_THRESHOLD"] =  0.01
+
+        config["simulation"]["COMPUTE_POSITIONS"] = True
+
+        config["simulation"]["N_POLYMERS"] = 1
+        config["simulation"]["MINIMIZATION_STEPS"] = 600
+        config["physical"]["k"] = 1000
+        config["physical"]["N_MONOMERS"] = 50
+        config["simulation"]["SEED"] = seed
+
+        config["simulation"]["LB_TIME_STEP"] = 0.001
+        config["simulation"]["TIME_STEP"] = 0.001
+        add_timeloops_from_gridsize(config)
+        add_dependent_parameters(config)
+        add_polymer_positions(config)
+    
+    if run_type == "experiment_density":
+        shear = float(sys.argv[2])
+        N_POLYMERS = int(sys.argv[3])
+        save_dir = str(sys.argv[4])
+
+        config["output"]["DIRECTORY"] = f"./{save_dir}/N_polymers_{N_POLYMERS}/"
+        
+        config["simulation"]["SELF_ASSOCIATE"] =  True
+        config["simulation"]["SAVE_VTK"] = True
+        config["simulation"]["SHEAR"] = shear
+        config["simulation"]["TOTAL_TIME"] = 0.3
         config["FORCE_THRESHOLD"] =  0.01
 
         config["simulation"]["COMPUTE_POSITIONS"] = False
 
-        config["simulation"]["N_POLYMERS"] = 1
-        # config["simulation"]["MINIMIZATION_STEPS"] = 600
+        config["simulation"]["N_POLYMERS"] = N_POLYMERS
+
         config["physical"]["k"] = 1000
-        config["physical"]["N_MONOMERS"] = 100
+        config["physical"]["N_MONOMERS"] = 50
         config["simulation"]["SEED"] = 1
 
-        # config["output"]["DIRECTORY"] = f"./{save_dir}/selfassociation/"
-        # config["simulation"]["LB_TIME_STEP"] = 0.001
         config["simulation"]["LB_TIME_STEP"] = 0.001
         config["simulation"]["TIME_STEP"] = 0.001
         add_timeloops_from_gridsize(config)
@@ -592,6 +631,6 @@ if __name__ == "__main__":
         add_dependent_parameters(config)
         add_polymer_positions(config)
 
-    lbf, forces, positions, drag_forces, tensile_forces = run_simulation(config)
+    lbf, forces, positions, drag_forces, tensile_forces, added_bonds_per_step = run_simulation(config)
 
-    save_results(config, lbf, forces, drag_forces, tensile_forces, positions)
+    save_results(config, lbf, forces, drag_forces, tensile_forces, added_bonds_per_step, positions)

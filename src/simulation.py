@@ -206,6 +206,7 @@ def add_tensile_forces_to_vtk_scalars(vtk_path, tensile_force_scalar):
             # Insert scalar tensile forces
             new_lines.append("SCALARS tensile_force float\n")
             new_lines.append("LOOKUP_TABLE default\n")
+
             for p in range(n_particles):
                 val = tensile_force_scalar[p]
                 new_lines.append(f"{val}\n")
@@ -299,11 +300,11 @@ def add_bonds(system, exceeding_ids, fene, type_dictionary, distance, type_to_id
 
             # directed bond check
             if pid_neighbor in bonds[pid]:
-                print(f"Directed bond {pid} -> {pid_neighbor} already exists")
+                # print(f"Directed bond {pid} -> {pid_neighbor} already exists")
                 continue
 
             # add bond
-            print(f"Add directed bond {pid} -> {pid_neighbor}")
+            # print(f"Add directed bond {pid} -> {pid_neighbor}")
             p_handle_neighbor = system.part.by_id(pid_neighbor)
             p_handle.add_bond((fene, p_handle_neighbor))
 
@@ -317,7 +318,7 @@ def add_bonds(system, exceeding_ids, fene, type_dictionary, distance, type_to_id
             if degree[pid] >= 3:
                 break
 
-    print(f"Added bonds: {added_bonds}")
+    # print(f"Added bonds: {added_bonds}")
     return added_bonds
 
 def remove_bonds(system, below_ids, fene, bonds, degree, type_dictionary):
@@ -495,6 +496,7 @@ def run_simulation(params):
     system.constraints.add(particle_type=N_POLYMERS, penetrable=False, shape=wall_shape_z_down)
 
     if geo_sphere:
+        # only adding the sphere as a constraint here, later for LB
         logging.info("Adding Sphere.")
         # add sphere as constraint 0.5 agrid from the wall
         sphere_constraint = espressomd.shapes.Sphere(radius=radius_object + AGRID, center=[25, 25, radius_object + 0.5 * AGRID], direction=1)
@@ -505,6 +507,7 @@ def run_simulation(params):
         # system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=sphere, velocity=[0, 0, 0]))
 
     if geo_microcontraction:
+        # only add constraint for micro contraction here, later for LB too
         logging.info("Adding Microcontraction.")
         # add sphere as constraint 0.5 agrid from the wall
         microcontraction_constraint = espressomd.shapes.Rhomboid(corner=np.array([AGRID * 0.5, AGRID * 0.5, AGRID * 0.5]), a=np.array([20.0, 0.0, 0.0]),
@@ -512,31 +515,9 @@ def run_simulation(params):
         # particle type per polymer range from 0 to N_POLYMER-1, giving LB shapes "particle type" N_POLYMERS
         system.constraints.add(particle_type=N_POLYMERS, penetrable=False, shape=microcontraction_constraint)
         
-        microcontraction = espressomd.shapes.Rhomboid(corner=np.array([AGRID * 0.5, AGRID * 0.5, AGRID * 0.5]), a=np.array([20.0, 0.0, 0.0]),
-            b=np.array([0.0, 130.0, 0.0]), c=np.array([40.0, 0.0, 80.0]), direction=1)
-        system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=microcontraction, velocity=[0, 0, 0]))
-
-    # system.integrator.set_vv()
-    # logging.info(f"Initialize LB fluid.")
-
-    # lbf = espressomd.lb.LBFluid(kT=0, seed=42, agrid=AGRID, dens=DENS, visc=VISC, tau=LB_TIME_STEP)
-    # system.actors.add(lbf)
-    # system.thermostat.set_lb(LB_fluid=lbf, gamma=GAMMA, seed=42)
-
-    # wall_shape_z_up_lb = espressomd.shapes.Wall(normal=[0, 0, 1], dist=AGRID)
-    # wall_shape_z_down_lb = espressomd.shapes.Wall(normal=[0, 0, -1], dist=-(BOX_Lz - AGRID))
-
-    # logging.info(f"Set LB setup with velocity = {VELOCITY}")
-    # lb_boundary_up = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_up_lb, velocity=[0, 0, 0]))
-    # lb_boundary_down = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_down_lb, velocity=[VELOCITY, 0, 0]))
-
-    # convergence_steps = 10
-    # logging.info(f"Iterate until the flow profile converges {int(convergence_steps * STEPS)}.")
-    # if save_VTK:
-    #     for i in range(convergence_steps):
-    #         print(f"step {i + 1} of {convergence_steps}", end='\r', flush=True)
-    #         system.part.writevtk(outdir + f"fluid_convergence_{i:05d}.vtk")
-    #         system.integrator.run(STEPS)
+        # microcontraction = espressomd.shapes.Rhomboid(corner=np.array([AGRID * 0.5, AGRID * 0.5, AGRID * 0.5]), a=np.array([20.0, 0.0, 0.0]),
+        #     b=np.array([0.0, 130.0, 0.0]), c=np.array([40.0, 0.0, 80.0]), direction=1)
+        # system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=microcontraction, velocity=[0, 0, 0]))
 
     # Polymers
     if N_POLYMERS > 0:
@@ -558,7 +539,7 @@ def run_simulation(params):
         accumulator_positions = espressomd.accumulators.TimeSeries(obs=part_pos, delta_N=STEPS)
         system.auto_update_accumulators.add(accumulator_forces)
         system.auto_update_accumulators.add(accumulator_positions)
-    print(COMPUTE_POSITIONS, N_POLYMERS)
+
     if COMPUTE_POSITIONS and N_POLYMERS > 0:
         # Minimization and integrator
         system.integrator.set_steepest_descent(f_max=0, gamma=0.001, max_displacement=0.0001 * sigma)
@@ -581,7 +562,9 @@ def run_simulation(params):
 
     system.integrator.set_vv()
     logging.info(f"Initialize LB fluid.")
-
+    
+    # adding all LB stuff after the minimization of the energy (positions)
+    # because this uses a different integrator
     lbf = espressomd.lb.LBFluid(kT=0, seed=42, agrid=AGRID, dens=DENS, visc=VISC, tau=LB_TIME_STEP)
     system.actors.add(lbf)
     system.thermostat.set_lb(LB_fluid=lbf, gamma=GAMMA, seed=42)
@@ -592,18 +575,16 @@ def run_simulation(params):
     logging.info(f"Set LB setup with velocity = {VELOCITY}")
     lb_boundary_up = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_up_lb, velocity=[0, 0, 0]))
     lb_boundary_down = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_down_lb, velocity=[VELOCITY, 0, 0]))
+    
     if geo_sphere:
         sphere = espressomd.shapes.Sphere(radius=radius_object, center=[25, 25, radius_object + 0.5 * AGRID])
         system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=sphere, velocity=[0, 0, 0]))
-
-    # Main simulation loop
-    logging.info("Run simulation.")
-    start_time = time.time()
 
     if N_POLYMERS > 0:
         # drag forces per monomer
         drag_forces_traj = np.empty((int(LOOPS), int(N_POLYMERS * N_MONOMERS), 3), dtype=np.float32)
         tensile_forces_traj = np.empty((int(LOOPS), int(N_POLYMERS * N_MONOMERS)), dtype=np.float32)
+        added_bonds_per_step_traj = np.zeros(int(LOOPS), dtype=np.int32)
 
         WINDOW = 20
 
@@ -629,6 +610,9 @@ def run_simulation(params):
         print(degree)
     
     print(system.actors.active_actors)
+    # Main simulation loop
+    logging.info("Run simulation.")
+    start_time = time.time()
 
     if save_VTK and N_POLYMERS == 0:
         # Fluid only testing of the velocity field
@@ -661,13 +645,14 @@ def run_simulation(params):
             positions = espressomd.observables.ParticlePositions(ids=particle_ids).calculate()
             net_tensile_forces, vec_tensile_forces = compute_fene_tensile_forces(positions,N_POLYMERS,N_MONOMERS,k=k,r_0=r_0,d_r_max=d_r_max)
 
-            # net_tensile = np.linalg.norm(tensile_forces, axis=1)
+            # adding net tensile forces per timestep to the npz file
             tensile_forces_traj[i] = net_tensile_forces
             start = max(0, i - WINDOW + 1)    
             tensile_window = tensile_forces_traj[start:i+1]
             tensile_avg = tensile_window.mean(axis=0)
 
             vtk_file = outdir + f"particles_{i:05d}.vtk"
+            # adding the net tensile forces MOVING AVG to the vtk files
             add_tensile_forces_to_vtk_scalars(vtk_file, tensile_avg)
 
             if SELF_ASSOCIATE and i >= WINDOW:
@@ -678,8 +663,10 @@ def run_simulation(params):
                 added_pairs = add_bonds(system, exceeding_ids, fene=fene, type_dictionary=type_dictionary, distance=R_CAPTURE,
                     type_to_ids=type_to_ids, bonds=bonds, degree=degree)
                 
-                #below_mask = tensile_avg < FORCE_THRESHOLD   # or use hysteresis threshold
-                #below_ids = particle_ids[below_mask]
+                added_bonds_per_step_traj[i] = len(added_pairs)
+                # print(added_bonds_per_step_traj)
+                # below_mask = tensile_avg < FORCE_THRESHOLD
+                # below_ids = particle_ids[below_mask]
 
                 #removed_pairs = remove_bonds(system, below_ids, fene=fene, bonds=bonds, degree=degree, type_dictionary=type_dictionary)
 
@@ -718,4 +705,4 @@ def run_simulation(params):
     end_time = time.time()
     print(f"Total runtime: {end_time - start_time:.2f} seconds")
     
-    return lbf, accumulator_forces, accumulator_positions, drag_forces_traj, tensile_forces_traj
+    return lbf, accumulator_forces, accumulator_positions, drag_forces_traj, tensile_forces_traj, added_bonds_per_step_traj
