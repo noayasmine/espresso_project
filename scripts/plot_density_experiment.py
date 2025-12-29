@@ -30,11 +30,11 @@ def load_npz_first(npz_path):
 # ----------------------------
 base_dir = "/home/nroebersen/espresso_project/experiments/density_experiment"   # <-- change
 AREA = 112.0
-USE_DENSITY_X = False
+USE_DENSITY_X = True
 N_LAST = 20
 
 # INCLUDE_NS = None
-INCLUDE_NS = [10, 20, 40, 60, 80, 100, 140, 160, 200]
+INCLUDE_NS = [10, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200]
 # INCLUDE_NS = [10, 40, 80]
 
 
@@ -93,35 +93,37 @@ order = np.argsort(Ns)
 Ns = np.array(Ns)[order]
 densities = np.array(densities)[order]
 tot_assocs = np.array(tot_assocs)[order]
+norm_tot_assocs = tot_assocs/Ns
 t_mean = np.array(t_mean)[order]
 t_min = np.array(t_min)[order]
 t_max = np.array(t_max)[order]
 
 x = densities if USE_DENSITY_X else Ns
-xlabel = r"Density (1/$\mu$m$^2$)" if USE_DENSITY_X else r"Number of polymers"
+xlabel = r"Polymer density (N/$\mu$m$^2$)" if USE_DENSITY_X else r"Number of polymers"
 
 
 # ----------------------------
 # plot 1: total self associations vs x
 # ----------------------------
 plt.figure(figsize=(4, 3))
-plt.plot(x, tot_assocs, "o-")
+plt.plot(x, norm_tot_assocs, "o-")
+plt.axhline(50, color='r',label="max associations")
 plt.xlabel(xlabel)
-plt.ylabel("Total self-associations\n(sum over all timesteps)")
+plt.ylabel("Avg number self-associations")
 plt.tight_layout()
+plt.legend()
 plt.savefig(os.path.join(base_dir, "self_associations_total_vs_x.png"), dpi=300)
 plt.close()
-
 
 # ----------------------------
 # plot 2: tensile force stats vs x
 # ----------------------------
 plt.figure(figsize=(4, 3))
 plt.plot(x, t_mean, "o-", label="mean")
-plt.plot(x, t_min, "--", label="min")
-plt.plot(x, t_max, "--", label="max")
+#plt.plot(x, t_min, "--", label="min")
+#plt.plot(x, t_max, "--", label="max")
 plt.xlabel(xlabel)
-plt.ylabel(f"Tensile force (pN)\n(avg last {N_LAST} timesteps)")
+plt.ylabel(f"Avg tensile force per monomer (pN)\n(avg last {N_LAST} timesteps)")
 plt.legend(frameon=False)
 plt.tight_layout()
 plt.savefig(os.path.join(base_dir, "tensile_force_stats_vs_x.png"), dpi=300)
