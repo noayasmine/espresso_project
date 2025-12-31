@@ -1,37 +1,30 @@
+import os
 import numpy as np
 import matplotlib.pyplot as plt
-import os
 
-def load_npz_first(npz_path):
-    data = np.load(npz_path)
-    return data[list(data.keys())[0]]
+def load_npz_first(path):
+    d = np.load(path)
+    return d[d.files[0]]
 
 # ----------------------------
-# user settings
+# settings
 # ----------------------------
-base_dir = "/home/nroebersen/espresso_project/experiments/density_experiment"
+base_dir = "/home/nroebersen/espresso_project/experiments/density_experiment/selfassociation"
 AREA = 72.0
 USE_DENSITY_X = True
 N_LAST = 20
-
+N_MOV = 20  # moving average window for tensile timeseries
 INCLUDE_NS = [10, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200]
 
 # ----------------------------
-# collect data
+# collect
 # ----------------------------
-Ns = []
-densities = []
-
-# self-association equilibrium stats (last N_LAST timesteps)
-assoc_mean = []
-assoc_std = []
-
-# tensile equilibrium stats (last N_LAST timesteps)
-t_mean = []
-t_std = []
-
-added_timeseries = {}     # total added per timestep (T,)
-tensile_avg_ts = {}       # avg tensile over monomers vs time (T,) in pN
+Ns, densities = [], []
+assoc_mean, assoc_std = [], []
+t_mean, t_std = [], []
+added_timeseries = {}
+tensile_avg_ts = {}      # raw avg over monomers vs time
+tensile_avg_ma = {}      # moving-avg version
 
 for name in sorted(os.listdir(base_dir)):
     if not name.startswith("N_polymers_"):
@@ -42,125 +35,117 @@ for name in sorted(os.listdir(base_dir)):
         continue
 
     folder = os.path.join(base_dir, name)
-
     Ns.append(Npol)
     densities.append(Npol / AREA)
 
-    # ---- added bonds -> timeseries total per timestep
-    added = load_npz_first(os.path.join(folder, "added_bonds.npz"))
-    if added.ndim == 1:
-        added_ts = added.astype(np.float32)  # (T,)
-    else:
-        added_ts = np.nansum(added, axis=tuple(range(1, added.ndim))).astype(np.float32)  # (T,)
-
+    added_ts = load_npz_first(os.path.join(folder, "added_bonds.npz")).astype(float)  # (T,)
     added_timeseries[Npol] = added_ts
 
-    # equilibrium mean/std from LAST N_LAST timesteps (normalize per polymer)
-    last = min(N_LAST, added_ts.shape[0])
-    assoc_eq = added_ts[-last:]
-    assoc_mean.append(np.nanmean(assoc_eq) / Npol)
-    assoc_std.append(np.nanstd(assoc_eq) / Npol)
+    added_ts = load_npz_first(os.path.join(folder, "added_bonds.npz")).astype(float)  # (T,)
+    added_timeseries[Npol] = added_ts
 
-    # ---- tensile forces: load raw -> magnitude -> avg over monomers vs time
-    tens_path = os.path.join(folder, "tensile_forces.npz")
-    tens_arr = load_npz_first(tens_path)  # (T,N) or (T,N,3)
+    assoc_total_per_polymer = np.nansum(added_ts) / Npol
+    assoc_mean.append(assoc_total_per_polymer)
+    # cannot get std because i do not track the self associations per polymer, but per timestep
+    assoc_std.append(0)
 
-    if tens_arr.ndim == 3:
-        mags = np.linalg.norm(tens_arr, axis=-1)  # (T,N)
-    elif tens_arr.ndim == 2:
-        mags = np.abs(tens_arr)                   # (T,N)
-    else:
-        raise ValueError("Unexpected tensile_forces shape", tens_arr.shape)
+    # --- tensile: scalar net (T,N), KEEP SIGN
+    tens = load_npz_first(os.path.join(folder, "tensile_forces.npz"))  # (T,N)
+    avg_t = np.nanmean(tens, axis=1) * 1000.0                          # (T,) pN
+    tensile_avg_ts[Npol] = avg_t
 
-    avg_over_monomers_time = np.nanmean(mags, axis=1).astype(np.float32) * 1000.0  # (T,) pN
-    tensile_avg_ts[Npol] = avg_over_monomers_time
+    # moving avg (simple trailing window like before)
+    ma = np.empty_like(avg_t, dtype=float)
+    for i in range(len(avg_t)):
+        start = max(0, i - N_MOV + 1)
+        ma[i] = avg_t[start:i+1].mean()
+    tensile_avg_ma[Npol] = ma
 
-    # equilibrium mean/std from LAST N_LAST timesteps
-    last = min(N_LAST, avg_over_monomers_time.shape[0])
-    tens_eq = avg_over_monomers_time[-last:]
-    t_mean.append(np.nanmean(tens_eq))
-    t_std.append(np.nanstd(tens_eq))
+    # tensile forces: scalar net (T, N_total), signed
+    tens = load_npz_first(os.path.join(folder, "tensile_forces.npz"))  # (T, N_total)
+
+    # last N timesteps
+    last = min(50, tens.shape[0])
+    tens_last = tens[-last:]                       # (50, N_total)
+
+    # mean tensile force per monomer (time-averaged)
+    mean_per_monomer = np.nanmean(tens_last, axis=0)   # (N_total,)
+
+    # average over ALL monomers
+    t_mean.append(np.nanmean(mean_per_monomer) * 1000.0)  # pN
+
+    # std of the mean per monomer (SEM over monomers)
+    t_std.append(
+        np.nanstd(mean_per_monomer) / np.sqrt(len(mean_per_monomer)) * 1000.0
+    )
 
 
 # ----------------------------
-# sort by N
+# sort
 # ----------------------------
 order = np.argsort(Ns)
 Ns = np.array(Ns)[order]
 densities = np.array(densities)[order]
-
 assoc_mean = np.array(assoc_mean)[order]
 assoc_std = np.array(assoc_std)[order]
-
 t_mean = np.array(t_mean)[order]
 t_std = np.array(t_std)[order]
 
 x = densities if USE_DENSITY_X else Ns
-xlabel = r"Polymer density (N/$\mu$m$^2$)" if USE_DENSITY_X else r"Number of polymers"
-
+xlabel = r"Polymer density (1/$\mu$m$^2$)" if USE_DENSITY_X else r"Number of polymers"
 
 # ----------------------------
-# plot 1: self associations vs x (mean ± std over last N_LAST)
+# plot 1: self associations vs x
 # ----------------------------
 plt.figure(figsize=(4, 3))
 plt.errorbar(x, assoc_mean, yerr=assoc_std, fmt="o-", capsize=3)
-plt.axhline(50, color='r', label="max associations")
+plt.axhline(50, color="r", label="max associations")
 plt.xlabel(xlabel)
 plt.ylabel(f"Avg self-associations per polymer\n(last {N_LAST} timesteps)")
-plt.tight_layout()
 plt.legend()
+plt.tight_layout()
 plt.savefig(os.path.join(base_dir, "self_associations_total_vs_x.png"), dpi=300)
 plt.close()
 
-
 # ----------------------------
-# plot 2: tensile force vs x (mean ± std over last N_LAST)
+# plot 2: tensile stats vs x (from moving-avg tensile series)
 # ----------------------------
 plt.figure(figsize=(4, 3))
-plt.errorbar(x, t_mean, yerr=t_std, fmt="o-", capsize=3, label="mean ± std")
+plt.errorbar(x, t_mean, yerr=t_std, fmt="o-", capsize=3)
 plt.xlabel(xlabel)
-plt.ylabel(f"Avg tensile force (pN)\n(last {N_LAST} timesteps)")
-plt.legend(frameon=False)
+plt.ylabel(f"Avg tensile force (pN)\n(MA window {N_MOV}, last {N_LAST} timesteps)")
 plt.tight_layout()
 plt.savefig(os.path.join(base_dir, "tensile_force_stats_vs_x.png"), dpi=300)
 plt.close()
 
-
 # ----------------------------
-# plot 3: added bonds per timestep (NO averaging)
+# plot 3: added bonds per timestep
 # ----------------------------
 plt.figure(figsize=(5, 3))
-for Npol in sorted(added_timeseries.keys()):
+for Npol in sorted(added_timeseries):
     ts = added_timeseries[Npol]
-    t = np.arange(len(ts))
-    plt.plot(t, ts, label=f"N={Npol}")
-
+    plt.plot(np.arange(len(ts)), ts, label=f"N={Npol}")
 plt.xlabel("Timestep")
-plt.ylabel("Added self-associations per timestep")
+plt.ylabel("Added self-associations per timestep (total)")
 plt.legend(frameon=False, fontsize=8, ncol=2)
 plt.tight_layout()
 plt.savefig(os.path.join(base_dir, "self_associations_per_timestep_timeseries.png"), dpi=300)
 plt.close()
 
-
 # ----------------------------
-# plot 4: avg tensile force over time (NO averaging), stacked subplots
+# plot 4: avg tensile over time (MOVING AVG), stacked
 # ----------------------------
-Ns_sorted = sorted(tensile_avg_ts.keys())
-nrows = len(Ns_sorted)
-
-fig, axes = plt.subplots(nrows, 1, figsize=(6, 1.6 * nrows), sharex=True)
-if nrows == 1:
+Ns_sorted = sorted(tensile_avg_ma)
+fig, axes = plt.subplots(len(Ns_sorted), 1, figsize=(6, 1.6 * len(Ns_sorted)), sharex=True)
+if len(Ns_sorted) == 1:
     axes = [axes]
 
 for ax, Npol in zip(axes, Ns_sorted):
-    ts = tensile_avg_ts[Npol]
-    t = np.arange(len(ts))
-    ax.plot(t, ts)
+    ts = tensile_avg_ma[Npol]
+    ax.plot(np.arange(len(ts)), ts)
     ax.set_ylabel(f"N={Npol}")
 
 axes[-1].set_xlabel("Timestep")
-fig.suptitle("Average tensile force over time (avg over monomers, no moving avg)", y=0.995)
 plt.tight_layout()
 plt.savefig(os.path.join(base_dir, "tensile_force_avg_over_time_subplots.png"), dpi=300)
 plt.close()

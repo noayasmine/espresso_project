@@ -282,7 +282,7 @@ def add_bonds(system, exceeding_ids, fene, type_dictionary, distance, type_to_id
     for pid in exc_ids_set:
         # Respect max-bond rule for this particle
         if degree[pid] >= 3:
-            print(f"Particle {pid} already has three bonds.")
+            # print(f"Particle {pid} already has three bonds.")
             continue
 
         p_handle = system.part.by_id(pid)
@@ -606,9 +606,6 @@ def run_simulation(params):
                 if pid not in bonds[qid]:
                     bonds[qid].add(pid)
                     degree[qid] += 1
-        
-        print(bonds)
-        print(degree)
     
     print(system.actors.active_actors)
     # Main simulation loop
@@ -646,7 +643,7 @@ def run_simulation(params):
             positions = espressomd.observables.ParticlePositions(ids=particle_ids).calculate()
             net_tensile_forces, vec_tensile_forces = compute_fene_tensile_forces(
             positions, N_POLYMERS, N_MONOMERS, k=k, r_0=r_0, d_r_max=d_r_max)
-            print(net_tensile_forces.shape, vec_tensile_forces.shape)
+
             # store per-timestep
             tensile_forces_traj[i]     = net_tensile_forces          # (N, )
             tensile_forces_vec_traj[i] = vec_tensile_forces          # (N, 3)
@@ -660,7 +657,7 @@ def run_simulation(params):
             # magnitude AFTER vector averaging
             tensile_net_from_vec_avg = np.linalg.norm(tensile_vec_avg, axis=-1)  # (N,)
 
-            # the moving average of the magnitudes (old way)
+            # the moving average of the magnitudes
             tensile_window = tensile_forces_traj[start:i+1]          # (W, N)
             tensile_net_avg = tensile_window.mean(axis=0)            # (N,)
 

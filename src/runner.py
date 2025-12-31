@@ -532,10 +532,10 @@ if __name__ == "__main__":
 
         config["output"]["DIRECTORY"] = f"./{save_dir}/N_polymers_{N_POLYMERS}/"
         
-        config["simulation"]["SELF_ASSOCIATE"] =  True
+        config["simulation"]["SELF_ASSOCIATE"] = False
         config["simulation"]["SAVE_VTK"] = True
         config["simulation"]["SHEAR"] = shear
-        config["simulation"]["TOTAL_TIME"] = 0.3
+        config["simulation"]["TOTAL_TIME"] = 0.15
         config["FORCE_THRESHOLD"] =  0.01
 
         config["simulation"]["COMPUTE_POSITIONS"] = False
