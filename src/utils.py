@@ -1,7 +1,7 @@
 import os
 import numpy as np
 
-def save_results(config, lbf, accumulator_forces, drag_forces, tensile_forces, added_bonds_per_step, accumulator_positions):
+def save_results(config, lbf, accumulator_forces, drag_forces, tensile_forces, tensile_vec_forces, added_bonds_per_step, accumulator_positions):
     shear = config["simulation"]["SHEAR"]
     loops = config["simulation"]["LOOPS"]
     BOX_Lx = config["geometry"]["BOX_Lx"]
@@ -15,6 +15,7 @@ def save_results(config, lbf, accumulator_forces, drag_forces, tensile_forces, a
     np.savez_compressed(os.path.join(outdir, "drag_forces.npz"), forces=drag_forces)
     np.savez_compressed(os.path.join(outdir, "forces.npz"), forces=accumulator_forces.time_series())
     np.savez_compressed(os.path.join(outdir, "tensile_forces.npz"), forces=tensile_forces)
+    np.savez_compressed(os.path.join(outdir, "tensile_forces_vec.npz"), forces=tensile_vec_forces)
     np.savez_compressed(os.path.join(outdir, "added_bonds.npz"), bonds=added_bonds_per_step)
 
     # Compute velocity profile

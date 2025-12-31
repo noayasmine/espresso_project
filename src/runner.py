@@ -497,30 +497,27 @@ if __name__ == "__main__":
     
     if run_type == "experiment":
         shear = float(sys.argv[2])
-        # config["simulation"]["SELF_ASSOCIATE"] = sys.argv[3].lower() == "true"
-        # N_monomers = int(sys.argv[3])
-        seed = int(sys.argv[3])
+        config["simulation"]["SELF_ASSOCIATE"] = sys.argv[3].lower() == "true"
         save_dir = str(sys.argv[4])
 
-        # if config["simulation"]["SELF_ASSOCIATE"]:
-        #     config["output"]["DIRECTORY"] = f"./{save_dir}/selfassociation/"
+        if config["simulation"]["SELF_ASSOCIATE"]:
+            config["output"]["DIRECTORY"] = f"./{save_dir}/selfassociation/"
 
-        # else:
-        #     config["output"]["DIRECTORY"] = f"./{save_dir}/no_selfassociation/"
-        config["output"]["DIRECTORY"] = f"./{save_dir}/N_monomers_{50}_seed_{seed}/"
+        else:
+            config["output"]["DIRECTORY"] = f"./{save_dir}/no_selfassociation/"
 
         config["simulation"]["SAVE_VTK"] = True
         config["simulation"]["SHEAR"] = shear
-        config["simulation"]["TOTAL_TIME"] = 0.01
+        config["simulation"]["TOTAL_TIME"] = 0.1
         config["FORCE_THRESHOLD"] =  0.01
 
-        config["simulation"]["COMPUTE_POSITIONS"] = True
+        config["simulation"]["COMPUTE_POSITIONS"] = False
 
         config["simulation"]["N_POLYMERS"] = 1
-        config["simulation"]["MINIMIZATION_STEPS"] = 600
+        # config["simulation"]["MINIMIZATION_STEPS"] = 600
         config["physical"]["k"] = 1000
         config["physical"]["N_MONOMERS"] = 50
-        config["simulation"]["SEED"] = seed
+        config["simulation"]["SEED"] = 1
 
         config["simulation"]["LB_TIME_STEP"] = 0.001
         config["simulation"]["TIME_STEP"] = 0.001
@@ -631,6 +628,6 @@ if __name__ == "__main__":
         add_dependent_parameters(config)
         add_polymer_positions(config)
 
-    lbf, forces, positions, drag_forces, tensile_forces, added_bonds_per_step = run_simulation(config)
+    lbf, forces, positions, drag_forces, tensile_forces, tensile_vec_forces, added_bonds_per_step = run_simulation(config)
 
-    save_results(config, lbf, forces, drag_forces, tensile_forces, added_bonds_per_step, positions)
+    save_results(config, lbf, forces, drag_forces, tensile_forces, tensile_vec_forces, added_bonds_per_step, positions)

@@ -153,7 +153,7 @@ def compute_fene_tensile_forces(positions, N_POLYMERS, N_MONOMERS, k, r_0, d_r_m
     F_mag = np.zeros_like(r)
     valid = np.abs(x) < d_r_max
     F_mag[valid] = k * x[valid] / (1.0 - (x[valid] / d_r_max)**2)
-
+    
     t_hat = np.zeros_like(r_vec)
     nonzero = r > 0
     t_hat[nonzero] = r_vec[nonzero] / r[nonzero, None]
@@ -584,6 +584,7 @@ def run_simulation(params):
         # drag forces per monomer
         drag_forces_traj = np.empty((int(LOOPS), int(N_POLYMERS * N_MONOMERS), 3), dtype=np.float32)
         tensile_forces_traj = np.empty((int(LOOPS), int(N_POLYMERS * N_MONOMERS)), dtype=np.float32)
+        tensile_forces_vec_traj = np.empty((int(LOOPS), int(N_POLYMERS * N_MONOMERS), 3), dtype=np.float32)
         added_bonds_per_step_traj = np.zeros(int(LOOPS), dtype=np.int32)
 
         WINDOW = 20
@@ -643,20 +644,32 @@ def run_simulation(params):
 
             ###### compute tensile forces from the fene over extension ######
             positions = espressomd.observables.ParticlePositions(ids=particle_ids).calculate()
-            net_tensile_forces, vec_tensile_forces = compute_fene_tensile_forces(positions,N_POLYMERS,N_MONOMERS,k=k,r_0=r_0,d_r_max=d_r_max)
+            net_tensile_forces, vec_tensile_forces = compute_fene_tensile_forces(
+            positions, N_POLYMERS, N_MONOMERS, k=k, r_0=r_0, d_r_max=d_r_max)
+            print(net_tensile_forces.shape, vec_tensile_forces.shape)
+            # store per-timestep
+            tensile_forces_traj[i]     = net_tensile_forces          # (N, )
+            tensile_forces_vec_traj[i] = vec_tensile_forces          # (N, 3)
 
-            # adding net tensile forces per timestep to the npz file
-            tensile_forces_traj[i] = net_tensile_forces
-            start = max(0, i - WINDOW + 1)    
-            tensile_window = tensile_forces_traj[start:i+1]
-            tensile_avg = tensile_window.mean(axis=0)
+            start = max(0, i - WINDOW + 1)
+
+            # vector moving average
+            tensile_vec_window = tensile_forces_vec_traj[start:i+1]  # (W, N, 3)
+            tensile_vec_avg = tensile_vec_window.mean(axis=0)        # (N, 3)
+
+            # magnitude AFTER vector averaging
+            tensile_net_from_vec_avg = np.linalg.norm(tensile_vec_avg, axis=-1)  # (N,)
+
+            # the moving average of the magnitudes (old way)
+            tensile_window = tensile_forces_traj[start:i+1]          # (W, N)
+            tensile_net_avg = tensile_window.mean(axis=0)            # (N,)
 
             vtk_file = outdir + f"particles_{i:05d}.vtk"
             # adding the net tensile forces MOVING AVG to the vtk files
-            add_tensile_forces_to_vtk_scalars(vtk_file, tensile_avg)
+            add_tensile_forces_to_vtk_scalars(vtk_file, tensile_net_avg)
 
             if SELF_ASSOCIATE and i >= WINDOW:
-                exceed_mask = tensile_avg > FORCE_THRESHOLD
+                exceed_mask = tensile_net_avg > FORCE_THRESHOLD
                 exceeding_ids = particle_ids[exceed_mask]
                 R_CAPTURE = 2 * a
 
@@ -705,4 +718,4 @@ def run_simulation(params):
     end_time = time.time()
     print(f"Total runtime: {end_time - start_time:.2f} seconds")
     
-    return lbf, accumulator_forces, accumulator_positions, drag_forces_traj, tensile_forces_traj, added_bonds_per_step_traj
+    return lbf, accumulator_forces, accumulator_positions, drag_forces_traj, tensile_forces_traj, tensile_forces_vec_traj, added_bonds_per_step_traj
