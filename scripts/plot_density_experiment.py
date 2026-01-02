@@ -61,23 +61,21 @@ for name in sorted(os.listdir(base_dir)):
         ma[i] = avg_t[start:i+1].mean()
     tensile_avg_ma[Npol] = ma
 
-    # tensile forces: scalar net (T, N_total), signed
+    # tensile forces: scalar net (T, N_total), signed (where N_total is all monomers)
     tens = load_npz_first(os.path.join(folder, "tensile_forces.npz"))  # (T, N_total)
 
     # last N timesteps
-    last = min(50, tens.shape[0])
+    last = min(20, tens.shape[0])
     tens_last = tens[-last:]                       # (50, N_total)
 
     # mean tensile force per monomer (time-averaged)
-    mean_per_monomer = np.nanmean(tens_last, axis=0)   # (N_total,)
+    mean_per_monomer = np.mean(tens_last, axis=0)   # (N_total,)
 
     # average over ALL monomers
-    t_mean.append(np.nanmean(mean_per_monomer) * 1000.0)  # pN
+    t_mean.append(np.mean(mean_per_monomer) * 1000.0)  # pN
 
     # std of the mean per monomer (SEM over monomers)
-    t_std.append(
-        np.nanstd(mean_per_monomer) / np.sqrt(len(mean_per_monomer)) * 1000.0
-    )
+    t_std.append(np.std(mean_per_monomer) * 1000.0)
 
 
 # ----------------------------
@@ -108,7 +106,7 @@ plt.savefig(os.path.join(base_dir, "self_associations_total_vs_x.png"), dpi=300)
 plt.close()
 
 # ----------------------------
-# plot 2: tensile stats vs x (from moving-avg tensile series)
+# plot 2: tensile stats vs x
 # ----------------------------
 plt.figure(figsize=(4, 3))
 plt.errorbar(x, t_mean, yerr=t_std, fmt="o-", capsize=3)
