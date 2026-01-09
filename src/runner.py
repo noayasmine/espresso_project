@@ -508,7 +508,7 @@ if __name__ == "__main__":
 
         config["simulation"]["SAVE_VTK"] = True
         config["simulation"]["SHEAR"] = shear
-        config["simulation"]["TOTAL_TIME"] = 0.1
+        config["simulation"]["TOTAL_TIME"] = 0.01
         config["FORCE_THRESHOLD"] =  0.01
 
         config["simulation"]["COMPUTE_POSITIONS"] = False
@@ -524,6 +524,7 @@ if __name__ == "__main__":
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config)
         add_polymer_positions(config)
+
     
     if run_type == "experiment_density":
         shear = float(sys.argv[2])
@@ -628,6 +629,7 @@ if __name__ == "__main__":
         add_dependent_parameters(config)
         add_polymer_positions(config)
 
-    lbf, forces, positions, drag_forces, tensile_forces, tensile_vec_forces, added_bonds_per_step = run_simulation(config)
+    if config["simulation"]["N_POLYMERS"] > 0:
+        lbf, forces, positions, drag_forces, tensile_forces, tensile_vec_forces, added_bonds_per_step = run_simulation(config)
 
-    save_results(config, lbf, forces, drag_forces, tensile_forces, tensile_vec_forces, added_bonds_per_step, positions)
+        save_results(config, lbf, forces, drag_forces, tensile_forces, tensile_vec_forces, added_bonds_per_step, positions)

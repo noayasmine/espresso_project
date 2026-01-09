@@ -94,7 +94,7 @@ def plot_profiles(folder):
     drag_cum = cumulative_from_last(drag)
 
     plt.figure(figsize=(6, 4))
-    plt.plot(tensile, label="tensile (signed if scalar)")
+    plt.plot(tensile, label="tensile")
     plt.plot(drag_cum, label="cumulative drag")
     plt.plot(total, label="total")
     plt.xlabel("monomer index")

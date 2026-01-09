@@ -614,6 +614,7 @@ def run_simulation(params):
 
     if save_VTK and N_POLYMERS == 0:
         # Fluid only testing of the velocity field
+        print(f"Run with N_pol=0")
         for i in range(int(LOOPS)):
             if i==1:
                 lbf.write_vtk_boundary(outdir + f"boundary_{i:05d}.vtk")
@@ -715,4 +716,7 @@ def run_simulation(params):
     end_time = time.time()
     print(f"Total runtime: {end_time - start_time:.2f} seconds")
     
-    return lbf, accumulator_forces, accumulator_positions, drag_forces_traj, tensile_forces_traj, tensile_forces_vec_traj, added_bonds_per_step_traj
+    if N_POLYMERS > 0:
+        return lbf, accumulator_forces, accumulator_positions, drag_forces_traj, tensile_forces_traj, tensile_forces_vec_traj, added_bonds_per_step_traj
+    elif N_POLYMERS == 0:
+        return lbf

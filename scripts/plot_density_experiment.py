@@ -77,7 +77,6 @@ for name in sorted(os.listdir(base_dir)):
     # std of the mean per monomer (SEM over monomers)
     t_std.append(np.std(mean_per_monomer) * 1000.0)
 
-
 # ----------------------------
 # sort
 # ----------------------------

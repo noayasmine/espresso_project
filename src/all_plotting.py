@@ -532,7 +532,6 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
 
     print(f"Unsupported plot_type: {plot_type}")
 
-
 def plot_tethered_across_LJ_for_gamma(
     config,
     base_dir,
@@ -786,8 +785,7 @@ def plot_cumulative_force_across_gammas(
     start_from_right=30,   # how many monomers (from the chain end) to include in the cumulative
     use_last_fraction=0.25, # take last 25% of time series for averaging; set None for full length
     fine_model=False,
-    skip=[]
-):
+    skip=[]):
     """
     Plot cumulative tensile force vs monomer index for all gamma_* in lj_dir at a given shear,
     and compute a reduced chi2-like metric = mean((diff/sigma_ref)^2).
@@ -796,9 +794,7 @@ def plot_cumulative_force_across_gammas(
       - validation reference uses 0.5/6 pN per monomer (with 0.1/6 pN uncertainty per monomer),
       - number of monomers is taken from the data (e.g., 150 for fine model).
     """
-    import os, re
-    import numpy as np
-    import matplotlib.pyplot as plt
+
 
     plt.style.use("seaborn-v0_8-whitegrid")
     color_cycle = plt.get_cmap("Dark2").colors
@@ -866,7 +862,9 @@ def plot_cumulative_force_across_gammas(
         else:
             nL = len(Fm)
         tail = Fm[-nL:, :] if nL > 0 else Fm
-
+        print("length of tail")
+        print(len(Fm))
+        print(len(tail))
         blocks[gval] = tail
 
     if not blocks or N_detect is None:
