@@ -499,7 +499,7 @@ def run_simulation(params):
         # only adding the sphere as a constraint here, later for LB
         logging.info("Adding Sphere.")
         # add sphere as constraint 0.5 agrid from the wall
-        sphere_constraint = espressomd.shapes.Sphere(radius=radius_object + AGRID, center=[25, 25, radius_object + 0.5 * AGRID], direction=1)
+        sphere_constraint = espressomd.shapes.Sphere(radius=radius_object, center=[25, 25, radius_object + 0.5 * AGRID], direction=1)
         # particle type per polymer range from 0 to N_POLYMER-1, giving LB shapes "particle type" N_POLYMERS
         system.constraints.add(particle_type=N_POLYMERS, penetrable=False, shape=sphere_constraint)
         
@@ -522,6 +522,7 @@ def run_simulation(params):
     # Polymers
     if N_POLYMERS > 0:
         logging.info("Build Polymer(s).")
+        print(START_POSITIONS.shape)
         type_dictionary, type_to_ids = build_polymers(system, N_MONOMERS, N_POLYMERS, N_POLYMERS_FREE, START_POSITIONS, POSITIONS, fene, r_0, SEED, \
             TETHERED, COILED, COMPUTE_POSITIONS)
         
@@ -534,6 +535,7 @@ def run_simulation(params):
         logging.info(f"Particle ids: {particle_ids}")
         forces = espressomd.observables.ParticleForces(ids=particle_ids)
         part_pos = espressomd.observables.ParticlePositions(ids=particle_ids)
+        print()
 
         accumulator_forces = espressomd.accumulators.TimeSeries(obs=forces, delta_N=STEPS)
         accumulator_positions = espressomd.accumulators.TimeSeries(obs=part_pos, delta_N=STEPS)
@@ -542,6 +544,7 @@ def run_simulation(params):
 
     if COMPUTE_POSITIONS and N_POLYMERS > 0:
         # Minimization and integrator
+        logging.info(f"Energy minimization")
         system.integrator.set_steepest_descent(f_max=0, gamma=0.001, max_displacement=0.0001 * sigma)
 
         logging.info(f"Energy minimization: {minimization_steps} steps")
@@ -576,9 +579,9 @@ def run_simulation(params):
     lb_boundary_up = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_up_lb, velocity=[0, 0, 0]))
     lb_boundary_down = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_down_lb, velocity=[VELOCITY, 0, 0]))
     
-    if geo_sphere:
-        sphere = espressomd.shapes.Sphere(radius=radius_object, center=[25, 25, radius_object + 0.5 * AGRID])
-        system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=sphere, velocity=[0, 0, 0]))
+    # if geo_sphere:
+    #     sphere = espressomd.shapes.Sphere(radius=radius_object - AGRID, center=[25, 25, radius_object + 0.5 * AGRID])
+    #     system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=sphere, velocity=[0, 0, 0]))
 
     if N_POLYMERS > 0:
         # drag forces per monomer

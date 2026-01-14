@@ -1,5 +1,7 @@
 import os
 import numpy as np
+import vtk
+from vtkmodules.util import numpy_support
 
 def save_results(config, lbf, accumulator_forces, drag_forces, tensile_forces, tensile_vec_forces, added_bonds_per_step, accumulator_positions):
     shear = config["simulation"]["SHEAR"]
@@ -20,9 +22,9 @@ def save_results(config, lbf, accumulator_forces, drag_forces, tensile_forces, t
 
     # Compute velocity profile
     step = 0.1
-    x = np.arange(0, BOX_Lx + step, step)
-    y = np.arange(0, BOX_Ly + step, step)
-    z = np.arange(0, BOX_Lz + step, step)
+    x = np.arange(0., BOX_Lx + step, step) # (N,)
+    y = np.arange(0., BOX_Ly + step, step) # (N,)
+    z = np.arange(0., BOX_Lz + step, step) # (N,)
     xx, yy, zz = np.meshgrid(x, y, z, indexing='ij')
     pos_grid = np.vstack([xx.ravel(), yy.ravel(), zz.ravel()]).T
     velocities = np.array([lbf.get_interpolated_velocity(p) for p in pos_grid])
@@ -31,6 +33,51 @@ def save_results(config, lbf, accumulator_forces, drag_forces, tensile_forces, t
     z_avg_vx = vx_only.mean(axis=(0, 1))
 
     np.savez_compressed(os.path.join(outdir, "velocity_profile.npz"), z_avg_vx=z_avg_vx)
+
+    # ----------------------------
+    # new: one x–z plane at y = 4 (same style)
+    # ----------------------------
+    y_slice = 4.0
+    step_fine = 0.01
+
+    x_fine = np.arange(0., BOX_Lx + step_fine, step_fine)   # (Nx,)
+    z_fine = np.arange(0., BOX_Lz + step_fine, step_fine)   # (Nz,)
+
+    xx2, zz2 = np.meshgrid(x_fine, z_fine, indexing='ij')   # both (Nx, Nz)
+    yy2 = np.full_like(xx2, y_slice, dtype=float)           # (Nx, Nz)
+
+    pos_plane = np.vstack([xx2.ravel(), yy2.ravel(), zz2.ravel()]).T  # (Nx*Nz, 3)
+    vel_plane = np.array([lbf.get_interpolated_velocity(p) for p in pos_plane])
+
+    vel_plane_reshaped = vel_plane.reshape(len(x_fine), len(z_fine), 3)  # (Nx, Nz, 3)
+    vx_plane = vel_plane_reshaped[..., 0]                                # (Nx, Nz)
+
+    np.savez_compressed(os.path.join(outdir, "velocity_plane_y4_step0p01.npz"),
+        vx_plane=vx_plane)
+
+    # save vti for visualization in paraview
+    velocities_reshaped = np.ascontiguousarray(velocities_reshaped)
+    vel = np.reshape(velocities_reshaped, (-1, 3), order="F")  # (Nx*Ny*Nz, 3)
+    vtk_vel = numpy_support.numpy_to_vtk(
+    num_array=vel,
+    deep=True,
+    array_type=vtk.VTK_DOUBLE)
+    vtk_vel.SetName("velocity")
+    Nx, Ny, Nz, _ = velocities_reshaped.shape
+
+    grid = vtk.vtkImageData()
+    grid.SetDimensions(Nx, Ny, Nz)
+    grid.SetSpacing(step, step, step)
+    grid.SetOrigin(0.0, 0.0, 0.0)
+
+    grid.GetPointData().SetVectors(vtk_vel)
+
+    writer = vtk.vtkXMLImageDataWriter()
+    vtk_path = os.path.join(outdir, "velocity_field.vti")
+    writer.SetFileName(vtk_path)
+    writer.SetInputData(grid)
+    writer.Write()
+
     # np.savez_compressed(os.path.join(outdir, "z_positions.npz"), z=z)
 
     print(f"Simulation complete. Forces shape: {accumulator_forces.time_series().shape}")

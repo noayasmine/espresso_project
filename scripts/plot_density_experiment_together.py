@@ -17,6 +17,8 @@ USE_DENSITY_X = True
 N_LAST = 20
 N_MOV = 20  # moving average window for tensile timeseries
 INCLUDE_NS = [20, 40, 60, 80, 100, 120, 140, 160, 180, 200]
+THRESHOLD = 20.0  # pN
+save_thr  = "/home/nroebersen/espresso_project/experiments/density_experiment/num_monomers_above_threshold_vs_density_overlay.png"
 
 # choose plotting window for timeseries (indices, inclusive/exclusive like Python slices)
 T1 = 0
@@ -25,6 +27,7 @@ T2 = 1500  # e.g. 5000 or None
 save_stats = "/home/nroebersen/espresso_project/experiments/density_experiment/tensile_force_stats_vs_density_overlay.png"
 save_ts    = "/home/nroebersen/espresso_project/experiments/density_experiment/tensile_force_timeseries_subplots_overlay.png"
 save_hist  = "/home/nroebersen/espresso_project/experiments/density_experiment/tensile_force_equilibrium_histograms_overlay.png"
+
 
 # ----------------------------
 # helpers
@@ -50,9 +53,24 @@ def slice_ts(arr, t1, t2):
         t1, t2 = t2, t1
     return arr[t1:t2], t1, t2
 
+def trailing_moving_avg_axis0(arr_TN, window):
+    """
+    Trailing moving average along axis=0 (time) for a (T,N) array.
+    Returns same shape (T,N).
+    """
+    arr = np.asarray(arr_TN, dtype=float)
+    T, N = arr.shape
+    out = np.empty_like(arr, dtype=float)
+    for t in range(T):
+        s = max(0, t - window + 1)
+        out[t] = np.nanmean(arr[s:t+1], axis=0)
+    return out
+
+
 def collect_one_condition(base_dir, label):
     Ns, densities = [], []
     t_mean, t_std = [], []
+    n_above = []   # count of monomers above threshold per Npol
 
     tensile_mu_ts = {}     # (T,) pN
     tensile_sd_ts = {}     # (T,) pN
@@ -79,6 +97,20 @@ def collect_one_condition(base_dir, label):
         densities.append(Npol / AREA)  # area density
 
         tens = load_npz_first(tens_path).astype(float)   # (T, N_total)
+        tens_pN = tens * 1000.0  # (T, N_total) in pN
+
+        # moving avg per monomer (NOT the mean over monomers)
+        ma_monomer = trailing_moving_avg_axis0(tens_pN, N_MOV)  # (T, N_total)
+
+        # last N_LAST timesteps: average the moving-avg signal in that window
+        last = min(N_LAST, ma_monomer.shape[0])
+        ma_last = ma_monomer[-last:]                      # (last, N_total)
+        ma_last_mean_per_monomer = np.nanmean(ma_last, axis=0)  # (N_total,)
+
+        # count monomers above threshold
+        N_total = tens.shape[1]
+        frac_above = np.sum(ma_last_mean_per_monomer > THRESHOLD) / N_total
+        n_above.append(frac_above)
 
         # per-timestep mean and std across ALL monomers -> pN
         mu_t = np.nanmean(tens, axis=1) * 1000.0
@@ -105,8 +137,10 @@ def collect_one_condition(base_dir, label):
     order = np.argsort(Ns)
     Ns = np.array(Ns)[order]
     densities = np.array(densities)[order]
+    n_above = np.array(n_above)[order]
     t_mean = np.array(t_mean)[order]
     t_std = np.array(t_std)[order]
+
 
     x = densities if USE_DENSITY_X else Ns
     return {
@@ -121,7 +155,8 @@ def collect_one_condition(base_dir, label):
         "tensile_mu_ma": tensile_mu_ma,
         "tensile_sd_ma": tensile_sd_ma,
         "eq_mean_per_monomer": eq_mean_per_monomer,
-    }
+        "n_above": n_above
+        }
 
 def intersect_Ns(A, B):
     return sorted(set(A["Ns"].tolist()).intersection(set(B["Ns"].tolist())))
@@ -236,3 +271,16 @@ plt.tight_layout()
 os.makedirs(os.path.dirname(save_hist), exist_ok=True)
 plt.savefig(save_hist, dpi=300)
 
+# ----------------------------
+# plot 4: number of monomers above threshold (moving-avg over last N_LAST)
+# ----------------------------
+plt.figure(figsize=(4.6, 3.4))
+plt.plot(A["x"], A["n_above"], "o-", label=A["label"])
+plt.plot(B["x"], B["n_above"], "s-", label=B["label"])
+plt.xlabel(xlabel)
+plt.ylabel(f" Fraction of monomers with F > {THRESHOLD:.0f} pN")
+plt.legend(frameon=False)
+plt.tight_layout()
+os.makedirs(os.path.dirname(save_thr), exist_ok=True)
+plt.savefig(save_thr, dpi=300)
+plt.show()

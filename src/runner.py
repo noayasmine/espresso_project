@@ -18,6 +18,41 @@ def add_dependent_parameters(config, LJ_strength=18):
     # Compute velocity (in MD units, i.e. 1e2 m/s )
     config["simulation"]["VELOCITY"] = config["simulation"]["SHEAR"] * 1e-4 * (config["geometry"]["BOX_Lz"] - config["geometry"]["AGRID"])
 
+import numpy as np
+
+def sample_sphere_filtered_min_dist(
+    npoints, xc, yc, zc, R=1.0,
+    min_dist=0.5,
+    oversample=3,
+    max_attempts=100000
+):
+    pts = []
+    attempts = 0
+
+    while len(pts) < npoints and attempts < max_attempts:
+        attempts += 1
+
+        # sample one point on sphere
+        v = np.random.randn(3)
+        v /= np.linalg.norm(v)
+
+        x = xc + R * v[0]
+        y = yc + R * v[1]
+        z = zc + R * v[2]
+
+        # bottom + circle rejection
+        r2 = (x - xc)**2 + (y - yc)**2
+        if (z < zc) and (r2 <= 5.0):
+            continue
+
+        p = np.array([x, y, z])
+
+        # min-distance check
+        if all(np.linalg.norm(p - q) >= min_dist for q in pts):
+            pts.append(p)
+
+    return np.array(pts)
+
 def sample_points_min_dist_2d(n_points, bounds, min_dist, max_attempts=100000):
     """
     Sample n_points in 2D within given bounds, with pairwise distance >= min_dist.
@@ -43,6 +78,52 @@ def sample_points_min_dist_2d(n_points, bounds, min_dist, max_attempts=100000):
     pts = np.array(pts)
     return pts[:, 0], pts[:, 1]
 
+import numpy as np
+
+def sample_sphere_filtered_min_dist(npoints, xc, yc, zc, R, min_dist, max_attempts=1000000):
+    
+    xs, ys, zs = [], [], []
+    attempts = 0
+
+    while len(xs) < npoints and attempts < max_attempts:
+        attempts += 1
+
+        v = np.random.randn(3)
+        v /= np.linalg.norm(v)
+
+        x = xc + R * v[0]
+        y = yc + R * v[1]
+        z = zc + R * v[2]
+
+        # reject bottom points inside circle
+        r2 = (x - xc)**2 + (y - yc)**2
+        if (z < zc) and (r2 <= 0.5):
+            continue
+
+        # min-distance check (3D)
+        ok = True
+        for xi, yi, zi in zip(xs, ys, zs):
+            if np.sqrt((x - xi)**2 + (y - yi)**2 + (z - zi)**2) < min_dist:
+                ok = False
+                break
+
+        if ok:
+            xs.append(x)
+            ys.append(y)
+            zs.append(z)
+
+    if len(xs) < npoints:
+        raise RuntimeError(
+            f"Could only sample {len(xs)} / {npoints} points "
+            f"(min_dist={min_dist}, R={R}).")
+
+    x = np.array(xs)
+    y = np.array(ys)
+    z = np.array(zs)
+
+    start_positions = np.stack([x, y, z], axis=1)
+    return start_positions
+
 def compute_start_positions(config):
     """Computes positions of first monomers.
 
@@ -63,55 +144,55 @@ def compute_start_positions(config):
     offset = 0.5 * AGRID + a + 1e-07
     # offset = 3 * AGRID + a + 1e-07
 
-    if config["geometry"]["SPHERE"]:
-        # ---- minimum distance in xy ----
+    # if config["geometry"]["SPHERE"]:
+    #     # ---- minimum distance in xy ----
         
-        x_bounds = (20, 35)
-        y_bounds = (15,35)
+    #     x_bounds = (20,35)
+    #     y_bounds = (15,35)
 
-        random_x, random_y = sample_points_min_dist_2d(N_POLYMERS, (x_bounds, y_bounds), min_dist)
+    #     random_x, random_y = sample_points_min_dist_2d(N_POLYMERS, (x_bounds, y_bounds), min_dist)
 
-        x = random_x.copy()
-        y = random_y.copy()
+    #     x = random_x.copy()
+    #     y = random_y.copy()
 
-        # ---- sphere geometry ----
-        xc = config["geometry"].get("SPHERE_CENTER_X", 25.0)
-        yc = config["geometry"].get("SPHERE_CENTER_Y", 25.0)
-        zc = config["geometry"].get("SPHERE_CENTER_Z",config["geometry"].get("RADIUS_OBJECT", 7.5))
-        zc += 0.5 * AGRID
+    #     # ---- sphere geometry ----
+    #     xc = config["geometry"].get("SPHERE_CENTER_X", 25.0)
+    #     yc = config["geometry"].get("SPHERE_CENTER_Y", 25.0)
+    #     zc = config["geometry"].get("SPHERE_CENTER_Z",config["geometry"].get("RADIUS_OBJECT", 7.5))
+    #     zc += 0.5 * AGRID
 
-        R = float(config["geometry"]["RADIUS_OBJECT"])
+    #     R = float(config["geometry"]["RADIUS_OBJECT"])
 
-        dx = x - xc
-        dy = y - yc
-        r2_xy = dx*dx + dy*dy
+    #     dx = x - xc
+    #     dy = y - yc
+    #     r2_xy = dx*dx + dy*dy
 
-        inside = r2_xy <= R*R
+    #     inside = r2_xy <= R*R
 
-        # default: flat wall
-        z = np.full(N_POLYMERS, offset)
+    #     # default: flat wall
+    #     z = np.full(N_POLYMERS, offset)
 
-        # lift points inside sphere footprint
-        if np.any(inside):
-            print("point inside sphere")
-            under = R*R - r2_xy[inside]
-            under = np.maximum(under, 0.0)
+    #     # lift points inside sphere footprint
+    #     if np.any(inside):
+    #         print("point inside sphere")
+    #         under = R*R - r2_xy[inside]
+    #         under = np.maximum(under, 0.0)
 
-            z_surf = zc + np.sqrt(under)
-            # z[inside] = z_surf
-            nx = dx[inside] / R
-            ny = dy[inside] / R
-            nz = (z_surf - zc) / R
+    #         z_surf = zc + np.sqrt(under)
+    #         # z[inside] = z_surf
+    #         nx = dx[inside] / R
+    #         ny = dy[inside] / R
+    #         nz = (z_surf - zc) / R
 
-            # increased offset due to non perfect sphere
-            offset_sphere = AGRID + a + 1e-07
-            x[inside] = x[inside] + nx * offset_sphere
-            y[inside] = y[inside] + ny * offset_sphere
-            z[inside] = z_surf     + nz * offset_sphere
+    #         # increased offset due to non perfect sphere
+    #         offset_sphere = AGRID + a + 1e-07
+    #         x[inside] = x[inside] + nx * offset_sphere
+    #         y[inside] = y[inside] + ny * offset_sphere
+    #         z[inside] = z_surf     + nz * offset_sphere
 
-        start_positions = np.stack([x, y, z], axis=1)
+    #     start_positions = np.stack([x, y, z], axis=1)
 
-    elif N_POLYMERS == 1:
+    if N_POLYMERS == 1:
         random_x = np.array([BOX_Lx / 5])
         random_y = np.array([BOX_Ly / 2])
         z = np.full(N_POLYMERS, offset)
@@ -125,6 +206,17 @@ def compute_start_positions(config):
         random_y = np.array([center_y - spacing / 2, center_y + spacing / 2])
         z = np.full(N_POLYMERS, offset)
         start_positions = np.stack([random_x, random_y, z], axis=1)
+    
+    elif config["geometry"]["SPHERE"]:
+        R = config["geometry"].get("RADIUS_OBJECT", 7.5)
+        xc = config["geometry"].get("SPHERE_CENTER_X", 25.0)
+        yc = config["geometry"].get("SPHERE_CENTER_Y", 25.0)
+        zc = config["geometry"].get("SPHERE_CENTER_Z",config["geometry"].get("RADIUS_OBJECT", 7.5))
+        R = config["geometry"].get("RADIUS_OBJECT", 7.5) + 10*a + 1e-07
+        zc += 0.5 * AGRID
+        # min_dist = 5 * a
+        
+        start_positions = sample_sphere_filtered_min_dist(N_POLYMERS, xc, yc, zc, R=R, min_dist=min_dist, max_attempts=100000)
 
     else:
         x_bounds = (AGRID + 2.0 * a, BOX_Lx - (AGRID + 2.0 * a))
@@ -141,22 +233,6 @@ def compute_start_positions(config):
 
     return start_positions
 
-def rotation_matrix_from_vectors(a, b):
-    """
-    Compute rotation matrix that rotates vector a onto vector b.
-    a, b must be normalized.
-    """
-    v = np.cross(a, b)
-    c = np.dot(a, b)
-    s = np.linalg.norm(v)
-
-    vx = np.array([[    0, -v[2],  v[1]],
-                   [ v[2],     0, -v[0]],
-                   [-v[1],  v[0],    0]])
-
-    R = np.eye(3) + vx + vx @ vx * ((1 - c) / (s * s))
-    return R
-
 def load_polymer_positions(start_positions, config):
     """
     Places pre-defined polymer conformations at start_positions.
@@ -171,14 +247,14 @@ def load_polymer_positions(start_positions, config):
 
     outdir = f"./configs/initial_polymer_positions_k_{k}"
     # outdir = f"./configs/initial_polymer_positions_k_1000"
-    # path_to_file = os.path.join(outdir, f"init_positions_{N_MONOMERS}_seed_{seed}.npz")
-    # print(f"Read out position file: {path_to_file}")
-    # data = np.load(path_to_file)
-    # init_positions = data["positions"]      # (1, N_MONOMERS, 3)
+    path_to_file = os.path.join(outdir, f"init_positions_{N_MONOMERS}_seed_{seed}.npz")
+    print(f"Read out position file: {path_to_file}")
+    data = np.load(path_to_file)
+    init_positions = data["positions"]      # (1, N_MONOMERS, 3)
 
-    # # normalize polymer to origin
-    # origin = init_positions[0, 0]
-    # shifted = init_positions - origin       # (1, N_MONOMERS, 3)
+    # normalize polymer to origin
+    origin = init_positions[0, 0]
+    shifted = init_positions - origin       # (1, N_MONOMERS, 3)
 
     N_POLYMERS = start_positions.shape[0]
     positions = np.zeros((N_POLYMERS, N_MONOMERS, 3))
@@ -195,39 +271,14 @@ def load_polymer_positions(start_positions, config):
     ez = np.array([0.0, 0.0, 1.0])  # original polymer direction
    
     for i in range(N_POLYMERS):
-        # random_seed = np.random.randint(0,10)
-        random_seed = 1
-
-        path_to_file = os.path.join(outdir, f"init_positions_{N_MONOMERS}_seed_{random_seed}.npz")
-        print(f"Read out position file: {path_to_file}")
-        data = np.load(path_to_file)
-        init_positions = data["positions"]      # (1, N_MONOMERS, 3)
-
-        # normalize polymer to origin
-        origin = init_positions[0, 0]
-        shifted = init_positions - origin       # (1, N_MONOMERS, 3)
-
         base = shifted[0]           # (N_MONOMERS, 3)
         pos0 = start_positions[i]   # (3,)
 
         polymer = base.copy()
 
         if sphere:
-            # this part of code doesnt work properly, it is not rotating the polymers properly
-            dx = pos0[0] - xc
-            dy = pos0[1] - yc
-
-            # check if start position lies on sphere footprint (from top)
-            if dx*dx + dy*dy <= R*R + AGRID:
-                print("Rotation for sphere")
-                # compute normal at surface point
-                r_vec = pos0 - np.array([xc, yc, zc])
-                n = r_vec / np.linalg.norm(r_vec)
-                print(n)
-                # rotation that maps +z to normal
-                Rmat = rotation_matrix_from_vectors(ez, n)
-
-                polymer = polymer @ Rmat.T
+            # tbd
+            continue
 
         # translate polymer to its start position
         positions[i] = polymer + pos0
@@ -508,11 +559,11 @@ if __name__ == "__main__":
 
         config["simulation"]["SAVE_VTK"] = True
         config["simulation"]["SHEAR"] = shear
-        config["simulation"]["TOTAL_TIME"] = 0.01
+        config["simulation"]["TOTAL_TIME"] = 0.02
         config["FORCE_THRESHOLD"] =  0.01
 
         config["simulation"]["COMPUTE_POSITIONS"] = False
-
+        #config["geometry"]["BOX_Lz"] = 
         config["simulation"]["N_POLYMERS"] = 1
         # config["simulation"]["MINIMIZATION_STEPS"] = 600
         config["physical"]["k"] = 1000
@@ -525,7 +576,6 @@ if __name__ == "__main__":
         add_dependent_parameters(config)
         add_polymer_positions(config)
 
-    
     if run_type == "experiment_density":
         shear = float(sys.argv[2])
         N_POLYMERS = int(sys.argv[3])
@@ -552,6 +602,40 @@ if __name__ == "__main__":
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config)
         add_polymer_positions(config)
+
+    if run_type == "sphere_sampling":
+        shear = float(sys.argv[2])
+        save_dir = str(sys.argv[3])
+
+        print("Run simulation with sphere for sampling on the surface")
+
+        config["output"]["DIRECTORY"] = f"./{save_dir}/"
+
+        config["simulation"]["SAVE_VTK"] = True
+        config["simulation"]["SHEAR"] = shear
+        config["simulation"]["TOTAL_TIME"] = 0.01
+        config["simulation"]["COMPUTE_POSITIONS"] = True
+        config["simulation"]["SEED"] = 1
+
+        # Run for max density used in the simple geometry, which is 200 polymers in a 72 mum^2 area
+        # calculate number of polymers needed to match that density 
+        # config["simulation"]["N_POLYMERS"] = int(200/72 * 4 * np.pi * config["geometry"]["RADIUS_OBJECT"] ** 2)
+        config["simulation"]["N_POLYMERS"] = int(1/72 * 4 * np.pi * config["geometry"]["RADIUS_OBJECT"] ** 2)
+        config["geometry"]["BOX_Lx"] = 100
+        config["geometry"]["BOX_Ly"] = 50
+        config["geometry"]["BOX_Lz"] = 30
+        config["geometry"]["AGRID"] = 1
+        config["geometry"]["SPHERE"] = True
+        config["simulation"]["MINIMIZATION_STEPS"] = 200
+        config["physical"]["k"] = 1000
+        config["physical"]["N_MONOMERS"] = 50
+
+        config["simulation"]["TIME_STEP"] = 0.001
+        config["simulation"]["LB_TIME_STEP"] = 0.001
+
+        add_timeloops_from_gridsize(config)
+        add_dependent_parameters(config)
+        add_polymer_positions(config)
     
     if run_type == "experiment_sphere":
         shear = float(sys.argv[2])
@@ -569,7 +653,7 @@ if __name__ == "__main__":
         config["simulation"]["SAVE_VTK"] = True
         config["simulation"]["SHEAR"] = shear
         config["simulation"]["TOTAL_TIME"] = 0.02
-        config["simulation"]["COMPUTE_POSITIONS"] = True
+        config["simulation"]["COMPUTE_POSITIONS"] = False
         config["simulation"]["SEED"] = 1
 
         config["simulation"]["N_POLYMERS"] = 3

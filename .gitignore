@@ -11,6 +11,7 @@ validation_data/
 *.avi
 *.png
 *.log
-*.csv
+experiments/
+*.vti
 slurm-*.out
 validation/
