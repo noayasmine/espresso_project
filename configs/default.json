@@ -1,11 +1,11 @@
 {
   "physical": {
     "KT": 4.280012e-06,
-    "GAMMA": 0.018,
+    "GAMMA": 0.0110,
     "e_LJ":18,
     "N_MONOMERS": 50,
     "a": 0.03,
-    "k": 10,
+    "k": 500,
     "d_r_max": 0.12,
     "shift": "auto",
     "VISC_dyn": 0.11
@@ -40,7 +40,7 @@
     "CYLINDER": false,
     "MICROCONTRACTION": false,
     "SPHERE": false,
-    "RADIUS_OBJECT": 7.5,
+    "RADIUS_OBJECT": 7,
     "AGRID": 1
   },
   "fluid": {

@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 # =====================
 # USER SETTINGS
 # =====================
-BASE_DIR = "/home/nroebersen/espresso_project/experiments/test_vec_forces/no_selfassociation" 
+BASE_DIR = "/home/nroebersen/espresso_project/validation/forces/experiment_forces_N50/500/11636" 
 WINDOW   = 20                             # moving average window
 MONOMER  = 0                               # monomer index (0-based)
 

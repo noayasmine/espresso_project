@@ -331,8 +331,6 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
                 N_here = pos.shape[1]
                 print(f"N monomers = {N_here}")
                 Lmax = N_here * 2 * a
-                if fine_model:
-                    Lmax = 3
 
                 vtype = str(validation_type).lower()
                 # if vtype == "tethered":
@@ -444,8 +442,8 @@ def plot_time_series(config, base_dir, plot_type, target_shear=None, avg_window=
             ax.set_ylabel(f"Drag force [pN]", fontsize=15)
             # ax.set_title(f"Force vs time (monomer {monomer_index})\n{subtitle}", fontsize=14)
             # if ax.has_data(): ax.legend(frameon=False, fontsize=10, ncol=2)
-            ax.set_xlim(0.15,0.4)
-            ax.set_ylim(0.50,0.53)
+            # ax.set_xlim(0.15,0.4)
+            # ax.set_ylim(0.50,0.53)
             # ax.set_xlim(0.3,0.4)
             ax.grid(False); plt.tight_layout()
             out = os.path.join(base_dir, f"force_monomer_{monomer_index}_vs_time.png")
@@ -544,8 +542,7 @@ def plot_tethered_across_LJ_for_gamma(
     aggregate_runs=True,
     skip = {},         # if True, use mean±std across run_* per shear; if False, plot each run
     N_mono=50,
-    a=0.03
-):
+    a=0.03):
 
     # ---------- helpers ----------
     def tethered_max_extension_last_frame(positions, anchor_idx=0):
@@ -554,7 +551,7 @@ def plot_tethered_across_LJ_for_gamma(
         return float(np.max(d))
 
     def fmt_kT(val):
-        r = round(val)
+        r = int(val)
         if abs(val - r) < 1e-9:
             return f"{int(r)} kT"
         s = f"{val:.2f}".rstrip('0').rstrip('.')
@@ -749,7 +746,7 @@ def plot_tethered_across_LJ_for_gamma(
         ax.fill_between(exp_x, exp_y - exp_s, exp_y + exp_s, color='grey', alpha=0.2, linewidth=0)
     ax.set_ylim(0,1.2)
     ax.set_xlim(0,1280)
-    ax.axhline(y=1, color='k', linestyle='--')
+    ax.axhline(y=1, color='k', linestyle='--', label="max extension")
     ax.set_xlabel(r"Wall shear stress [dyn cm$^{-2}$]", fontsize=15)
     ax.set_ylabel(r"$\hat{E}^{final}_{uncoiling}$", fontsize=15)
     ax.legend(fontsize=9, frameon=True, ncols=1 if aggregate_runs else 2,loc='center left', bbox_to_anchor=(1, 0.5))
@@ -951,7 +948,6 @@ def plot_cumulative_force_across_gammas(
 
     return mse_by_gamma
 
-
 def plot_recoiling_across_LJ_for_gamma(
     config,
     root_dir,
@@ -963,8 +959,7 @@ def plot_recoiling_across_LJ_for_gamma(
     show_individual_when_agg=False,  # if True, also show faint individual runs behind the mean
     runs_glob="run_*",           # pattern to discover run folders
     extension_metric="x",        # "euclidean" or "x"
-    skip=[]
-):
+    skip=[]):
     """
     Plot recoiling dynamics (tethered metric, normalized to t=0) for ONE gamma across ALL LJ_* folders.
     Computes reduced chi-squared (χ²/N) vs an expected curve by interpolating simulation to the reference x-points.
@@ -1216,8 +1211,7 @@ def plot_free_across_LJ_for_gamma__(
     Box_Lx=64,
     Box_Ly=32,
     Box_Lz=32,
-    outname=None
-):
+    outname=None):
     """
     Plot normalized final extension vs wall shear stress for the FREE case,
     aggregating over run_* per shear and drawing multiple LJ_* in one figure.
@@ -1449,10 +1443,6 @@ def plot_free_across_LJ_for_gamma__(
     plt.close(fig)
     print(f"Saved {out_png}")
 
-
-
-
-
 def plot_free_across_LJ_for_gamma_max_one(
     config,
     base_dir,
@@ -1461,8 +1451,7 @@ def plot_free_across_LJ_for_gamma_max_one(
     Box_Lx=64,
     Box_Ly=32,
     Box_Lz=32,
-    outname=None
-):
+    outname=None):
     """
     Plot normalized *maximum pairwise extension* vs shear rate for the FREE case,
     drawing multiple LJ_* in one figure.

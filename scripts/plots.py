@@ -44,7 +44,7 @@ config = load_config(config_path)
 # make plot for gamma validation
 base_dir = "/gpfs/home4/nroebersen/espresso_project/validation_data/single_runs/N50/validation_uncoil_k10/LJ_01400"
 plot_cumulative_force_across_gammas(config, base_dir, target_shear=11636, avg_window=1,
-    use_last_fraction=0.30, start_from_right=50, skip=[0.007, 0.008, 0.009, 0.01, 0.011, 0.012, 0.013, 0.014, 0.015])
+    use_last_fraction=0.30, start_from_right=50, skip=[0.01, 0.02])
 
 # # make plot for tethered uncoiling data
 # base_dir = "/gpfs/home4/nroebersen/espresso_project/validation_data/single_runs/N50/validation_uncoil_k10/"

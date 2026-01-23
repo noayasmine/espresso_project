@@ -363,8 +363,7 @@ def remove_bonds(system, below_ids, fene, bonds, degree, type_dictionary):
 
     return removed_bonds
 
-
-def build_polymers(system, n_monomers, n_polymers, n_polymers_free, start_positions, positions, fene, bond_length, SEED, TETHERED=True, COILED=True, COMPUTE_POSITIONS=True):
+def build_polymers(system, n_monomers, n_polymers, start_positions, positions, fene, bond_length, SEED, TETHERED=True, COILED=True, COMPUTE_POSITIONS=True):
     
     # compute positions here only if we are not using precomputed positions
     if COILED and COMPUTE_POSITIONS:
@@ -413,12 +412,14 @@ def run_simulation(params):
     TIME_STEP, LB_TIME_STEP, LOOPS, STEPS = sim["TIME_STEP"], sim["LB_TIME_STEP"], sim["LOOPS"], sim["STEPS"]
 
     N_POLYMERS = sim["N_POLYMERS"]
-    N_POLYMERS_FREE = sim["N_POLYMERS_FREE"]
-    POSITIONS = sim["POSITIONS"]
-    START_POSITIONS = sim["START_POSITIONS"]
+    if N_POLYMERS > 0:
+        POSITIONS = sim["POSITIONS"]
+        START_POSITIONS = sim["START_POSITIONS"]
+
     TETHERED = sim["TETHERED"]
     COILED = sim["COILED"]
 
+    # set shear times 4/3 to account for boundary condition
     SHEAR = sim["SHEAR"] * 1e-4  # convert to sim units
     save_VTK = sim["SAVE_VTK"]
     minimization_steps = sim["MINIMIZATION_STEPS"]
@@ -441,7 +442,6 @@ def run_simulation(params):
     # output and boundary
     DIRECTORY = out["DIRECTORY"]
     geo_sphere = geom.get("SPHERE", False)
-    geo_cylinder = geom.get("CYLINDER", False)
     geo_microcontraction = geom.get("MICROCONTRACTION", False)
     radius_object = geom.get("RADIUS_OBJECT", 7.5)
 
@@ -491,7 +491,7 @@ def run_simulation(params):
     wall_shape_z_up = espressomd.shapes.Wall(normal=[0, 0, 1], dist=AGRID * 0.5)
     wall_shape_z_down = espressomd.shapes.Wall(normal=[0, 0, -1], dist=-(BOX_Lz - AGRID * 0.5))
 
-    # particle type per polymer range from 0 to N_POLYMER-1, giving LB shapes "particle type" N_POLYMERS
+    # particle type per polymer range from [0, N_POLYMER-1], giving LB shapes "particle type" N_POLYMERS
     system.constraints.add(particle_type=N_POLYMERS, penetrable=False, shape=wall_shape_z_up)
     system.constraints.add(particle_type=N_POLYMERS, penetrable=False, shape=wall_shape_z_down)
 
@@ -502,9 +502,6 @@ def run_simulation(params):
         sphere_constraint = espressomd.shapes.Sphere(radius=radius_object, center=[25, 25, radius_object + 0.5 * AGRID], direction=1)
         # particle type per polymer range from 0 to N_POLYMER-1, giving LB shapes "particle type" N_POLYMERS
         system.constraints.add(particle_type=N_POLYMERS, penetrable=False, shape=sphere_constraint)
-        
-        # sphere = espressomd.shapes.Sphere(radius=radius_object, center=[25, 25, radius_object + 0.5 * AGRID])
-        # system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=sphere, velocity=[0, 0, 0]))
 
     if geo_microcontraction:
         # only add constraint for micro contraction here, later for LB too
@@ -523,7 +520,7 @@ def run_simulation(params):
     if N_POLYMERS > 0:
         logging.info("Build Polymer(s).")
         print(START_POSITIONS.shape)
-        type_dictionary, type_to_ids = build_polymers(system, N_MONOMERS, N_POLYMERS, N_POLYMERS_FREE, START_POSITIONS, POSITIONS, fene, r_0, SEED, \
+        type_dictionary, type_to_ids = build_polymers(system, N_MONOMERS, N_POLYMERS, START_POSITIONS, POSITIONS, fene, r_0, SEED, \
             TETHERED, COILED, COMPUTE_POSITIONS)
         
         # Add soft sphere potential between walls and particles
@@ -543,8 +540,9 @@ def run_simulation(params):
         system.auto_update_accumulators.add(accumulator_positions)
 
     if COMPUTE_POSITIONS and N_POLYMERS > 0:
-        # Minimization and integrator
-        logging.info(f"Energy minimization")
+        # energy minimization with steepest descent integrator
+        # to coil up polymers without overlap
+        start_time_energy_minimization = time.time()
         system.integrator.set_steepest_descent(f_max=0, gamma=0.001, max_displacement=0.0001 * sigma)
 
         logging.info(f"Energy minimization: {minimization_steps} steps")
@@ -560,7 +558,9 @@ def run_simulation(params):
                 print(f"step {i + 1} of {minimization_steps}", end='\r', flush=True)
                 system.integrator.run(STEPS)
 
-        np.savez_compressed(os.path.join(outdir, "init_positions.npz"), positions=accumulator_positions.time_series())
+        end_time_energy_minimization = time.time()
+        print(f"Runtime energy minimization step: {end_time_energy_minimization - start_time_energy_minimization:.2f} seconds")
+        np.savez_compressed(os.path.join(DIRECTORY, "init_positions.npz"), positions=accumulator_positions.time_series())
         print(f"Positions shape: {accumulator_positions.time_series().shape}")
 
     system.integrator.set_vv()
@@ -579,9 +579,10 @@ def run_simulation(params):
     lb_boundary_up = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_up_lb, velocity=[0, 0, 0]))
     lb_boundary_down = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_down_lb, velocity=[VELOCITY, 0, 0]))
     
-    # if geo_sphere:
-    #     sphere = espressomd.shapes.Sphere(radius=radius_object - AGRID, center=[25, 25, radius_object + 0.5 * AGRID])
-    #     system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=sphere, velocity=[0, 0, 0]))
+    if geo_sphere:
+        # effecitvely placing the sphere at (25,25,8) with radius 7
+        sphere = espressomd.shapes.Sphere(radius=radius_object + AGRID*0.5, center=[25, 25, radius_object + 0.5 * AGRID])
+        system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=sphere, velocity=[0, 0, 0]))
 
     if N_POLYMERS > 0:
         # drag forces per monomer
@@ -616,14 +617,14 @@ def run_simulation(params):
     start_time = time.time()
 
     if save_VTK and N_POLYMERS == 0:
-        # Fluid only testing of the velocity field
+        # Run to get velocity field only 
         print(f"Run with N_pol=0")
         for i in range(int(LOOPS)):
             if i==1:
                 lbf.write_vtk_boundary(outdir + f"boundary_{i:05d}.vtk")
 
             print(f"step {i + 1} of {int(LOOPS)}", end='\r', flush=True)
-            lbf.write_vtk_velocity(outdir + f"velocity_{i:05d}.vtk")
+            #lbf.write_vtk_velocity(outdir + f"velocity_{i:05d}.vtk")
             system.integrator.run(STEPS)
 
     if save_VTK and N_POLYMERS > 0:
@@ -635,7 +636,7 @@ def run_simulation(params):
                 lbf.write_vtk_boundary(outdir + f"boundary_{i:05d}.vtk")
 
             print(f"step {i + 1} of {int(LOOPS)}", end='\r', flush=True)
-            lbf.write_vtk_velocity(outdir + f"velocity_{i:05d}.vtk")
+            #lbf.write_vtk_velocity(outdir + f"velocity_{i:05d}.vtk")
             system.part.writevtk(outdir + f"particles_{i:05d}.vtk")
 
             system.integrator.run(STEPS)
@@ -689,8 +690,9 @@ def run_simulation(params):
             if i==1:
                 np.savez_compressed(os.path.join(DIRECTORY, "init_positions.npz"), positions=accumulator_positions.time_series())
                 print(f"Positions shape: {accumulator_positions.time_series().shape}")
-              
+
             print(f"step {i + 1} of {int(LOOPS)}", end='\r', flush=True)
+
             system.integrator.run(STEPS)
 
             drag_forces_per_particle = lb_drag_forces(system, lbf, GAMMA, particle_ids)
@@ -698,28 +700,47 @@ def run_simulation(params):
 
             ###### compute tensile forces from the fene over extension ######
             positions = espressomd.observables.ParticlePositions(ids=particle_ids).calculate()
-            net_tensile_forces = compute_fene_tensile_forces(positions,N_POLYMERS,N_MONOMERS,k=k,r_0=r_0,d_r_max=d_r_max)
+            net_tensile_forces, vec_tensile_forces = compute_fene_tensile_forces(
+            positions, N_POLYMERS, N_MONOMERS, k=k, r_0=r_0, d_r_max=d_r_max)
 
-            # net_tensile = np.linalg.norm(tensile_forces, axis=1)
-            tensile_forces_traj[i] = net_tensile_forces
-            start = max(0, i - WINDOW + 1)    
-            tensile_window = tensile_forces_traj[start:i+1]
-            tensile_avg = tensile_window.mean(axis=0)
+            # store per-timestep
+            tensile_forces_traj[i]     = net_tensile_forces          # (N, )
+            tensile_forces_vec_traj[i] = vec_tensile_forces          # (N, 3)
+
+            start = max(0, i - WINDOW + 1)
+
+            # vector moving average
+            tensile_vec_window = tensile_forces_vec_traj[start:i+1]  # (W, N, 3)
+            tensile_vec_avg = tensile_vec_window.mean(axis=0)        # (N, 3)
+
+            # magnitude AFTER vector averaging
+            tensile_net_from_vec_avg = np.linalg.norm(tensile_vec_avg, axis=-1)  # (N,)
+
+            # the moving average of the magnitudes
+            tensile_window = tensile_forces_traj[start:i+1]          # (W, N)
+            tensile_net_avg = tensile_window.mean(axis=0)            # (N,)
 
             if SELF_ASSOCIATE and i >= WINDOW:
-                exceed_mask = tensile_avg > FORCE_THRESHOLD
+                exceed_mask = tensile_net_avg > FORCE_THRESHOLD
                 exceeding_ids = particle_ids[exceed_mask]
                 R_CAPTURE = 2 * a
 
                 added_pairs = add_bonds(system, exceeding_ids, fene=fene, type_dictionary=type_dictionary, distance=R_CAPTURE,
-                    type_to_ids=type_to_ids, existing_pairs=existing_pairs, degree=degree)
+                    type_to_ids=type_to_ids, bonds=bonds, degree=degree)
+                
+                added_bonds_per_step_traj[i] = len(added_pairs)
+                # print(added_bonds_per_step_traj)
+                # below_mask = tensile_avg < FORCE_THRESHOLD
+                # below_ids = particle_ids[below_mask]
 
-            # add removal of bonds? 
+                #removed_pairs = remove_bonds(system, below_ids, fene=fene, bonds=bonds, degree=degree, type_dictionary=type_dictionary)
+
 
     end_time = time.time()
-    print(f"Total runtime: {end_time - start_time:.2f} seconds")
+    print(f"Runtime simulation: {end_time - start_time:.2f} seconds")
     
     if N_POLYMERS > 0:
         return lbf, accumulator_forces, accumulator_positions, drag_forces_traj, tensile_forces_traj, tensile_forces_vec_traj, added_bonds_per_step_traj
+
     elif N_POLYMERS == 0:
         return lbf
