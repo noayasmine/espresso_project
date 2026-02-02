@@ -9,7 +9,10 @@ def load_npz_first(path):
 # ----------------------------
 # settings
 # ----------------------------
-base_dir = "/home/nroebersen/espresso_project/experiments/density_experiment/selfassociation"
+# base_dir = "/home/nroebersen/espresso_project/experiments/density_experiment/5455/selfassociation"
+# base_dir = "/home/nroebersen/espresso_project/experiments/density_experiment/3636/selfassociation"
+base_dir = "/home/nroebersen/espresso_project/experiments/density_experiment/1454/selfassociation"
+
 AREA = 72.0
 USE_DENSITY_X = True
 N_LAST = 20

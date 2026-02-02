@@ -499,7 +499,8 @@ def run_simulation(params):
         # only adding the sphere as a constraint here, later for LB
         logging.info("Adding Sphere.")
         # add sphere as constraint 0.5 agrid from the wall
-        sphere_constraint = espressomd.shapes.Sphere(radius=radius_object, center=[25, 25, radius_object + 0.5 * AGRID], direction=1)
+        sphere_constraint = espressomd.shapes.Sphere(radius=radius_object + AGRID, center=[25, 25, radius_object + 0.5 * AGRID], direction=1)
+        #sphere_constraint = espressomd.shapes.Sphere(radius=radius_object + 0.5 * AGRID, center=[25, 25, radius_object + 0.5 * AGRID], direction=1)
         # particle type per polymer range from 0 to N_POLYMER-1, giving LB shapes "particle type" N_POLYMERS
         system.constraints.add(particle_type=N_POLYMERS, penetrable=False, shape=sphere_constraint)
 
@@ -581,7 +582,8 @@ def run_simulation(params):
     
     if geo_sphere:
         # effecitvely placing the sphere at (25,25,8) with radius 7
-        sphere = espressomd.shapes.Sphere(radius=radius_object + AGRID*0.5, center=[25, 25, radius_object + 0.5 * AGRID])
+        # sphere = espressomd.shapes.Sphere(radius=radius_object + AGRID*0.5, center=[25, 25, radius_object + 0.5 * AGRID])
+        sphere = espressomd.shapes.Sphere(radius=radius_object, center=[25, 25, radius_object + 0.5 * AGRID])
         system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=sphere, velocity=[0, 0, 0]))
 
     if N_POLYMERS > 0:

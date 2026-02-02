@@ -1,29 +1,39 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+# ks = [10, 100, 500, 1000, 5000, 10000]
+# Ns = [100]
+# folders_to_plot = []
+# for N in Ns:
+#     for k in ks:
+#         folders_to_plot.append(f"/home/nroebersen/espresso_project/validation/forces_gamma_00130/experiment_forces_N{N}/{k}/11636")
 
-# =====================
-# SETTINGS
-# =====================
-folders_to_plot = [
-"/home/nroebersen/espresso_project/validation/forces/experiment_forces_N100/10/11636",
-"/home/nroebersen/espresso_project/validation/forces/experiment_forces_N100/100/11636",
-"/home/nroebersen/espresso_project/validation/forces/experiment_forces_N100/500/11636",
-"/home/nroebersen/espresso_project/validation/forces/experiment_forces_N100/1000/11636",
-"/home/nroebersen/espresso_project/validation/forces/experiment_forces_N50/500/11636",
-"/home/nroebersen/espresso_project/validation/forces/experiment_forces_N250/500/11636",
-"/home/nroebersen/espresso_project/validation/forces/experiment_forces_N50/500/5455",
-"/home/nroebersen/espresso_project/validation/forces/experiment_forces_N100/500/5455",
-"/home/nroebersen/espresso_project/validation/forces/experiment_forces_N250/500/5455"
-]
+# folders_to_plot = [
+# "/home/nroebersen/espresso_project/validation/forces/experiment_forces_N100/10/11636",
+# "/home/nroebersen/espresso_project/validation/forces/experiment_forces_N100/100/11636",
+# "/home/nroebersen/espresso_project/validation/forces/experiment_forces_N100/500/11636",
+# "/home/nroebersen/espresso_project/validation/forces/experiment_forces_N100/1000/11636",
+# "/home/nroebersen/espresso_project/validation/forces/experiment_forces_N50/500/11636",
+# "/home/nroebersen/espresso_project/validation/forces/experiment_forces_N250/500/11636",
+# "/home/nroebersen/espresso_project/validation/forces/experiment_forces_N50/500/5455",
+# "/home/nroebersen/espresso_project/validation/forces/experiment_forces_N100/500/5455",
+# "/home/nroebersen/espresso_project/validation/forces/experiment_forces_N250/500/5455"
+# ]
 # folders_to_plot = [
 # "/home/nroebersen/espresso_project/validation/forces/experiment_forces_N50/500/11636",
 # "/home/nroebersen/espresso_project/validation/forces/experiment_forces_N50/500/5455"
 
 # ]
 
-particle_id = 1
-N_AVG = 20
+ks = [10, 100, 500, 1000, 5000, 10000]
+Ns = [100, 250]
+folders_to_plot = []
+for N in Ns:
+    for k in ks:
+        folders_to_plot.append(f"/home/nroebersen/espresso_project/validation/forces/experiment_forces_N{N}/{k}/11636")
+
+particle_id = 50
+N_AVG = 100
 N_MOV = 20
 dpi = 300
 
@@ -101,7 +111,6 @@ def plot_timeseries(folder):
     ax1.grid(False)
     ax1.set_xlim(0,140)
 
-
     ax2.plot(t, sig_mov, color="cadetblue", lw=2)
     ax2.set_xlabel("Time [ms]", fontsize=13)
     ax2.set_ylabel("Tensile force [pN]", fontsize=13)
@@ -150,8 +159,8 @@ def plot_profiles(folder):
     plt.plot(idx, drag_cum, label="cumulative drag", color="C1")
     plt.fill_between(idx, drag_cum - drag_stdev_cum, drag_cum + drag_stdev_cum, color="C1", alpha=0.25)
 
-    plt.plot(idx, total, label="total", color="C2")
-    plt.fill_between(idx, total - total_stdev, total + total_stdev, color="C2", alpha=0.25)
+    # plt.plot(idx, total, label="total", color="C2")
+    # plt.fill_between(idx, total - total_stdev, total + total_stdev, color="C2", alpha=0.25)
 
     N = len(tensile)
     ref_steps = np.arange(1, N + 1)
@@ -173,7 +182,114 @@ def plot_profiles(folder):
     plt.close()
     print("saved:", out)
 
+# for folder in folders_to_plot:
+#     plot_profiles(folder)
+#     plot_timeseries(folder)
 
-for folder in folders_to_plot:
-    plot_profiles(folder)
-    plot_timeseries(folder)
+
+
+ks = [500, 1000, 5000, 10000]
+Ns = [100, 250]
+
+run_id = "11636"
+base_dir = "/home/nroebersen/espresso_project/validation/forces"
+
+particle_id = 50
+N_AVG = 100
+N_MOV = 1
+dpi = 300
+
+tensile_filename = "tensile_forces.npz"
+drag_filename = "drag_forces.npz"
+total_filename = "forces.npz"
+
+
+def plot_tensile_profiles_onefig_per_N(Ns, ks, base_dir, run_id="11636", outdir=None):
+    if outdir is None:
+        outdir = base_dir
+
+    for N in Ns:
+        fig, axes = plt.subplots(
+            len(ks), 1,
+            figsize=(4, 1.5 * len(ks)),
+            sharex=True)
+
+        if len(ks) == 1:
+            axes = [axes]
+
+        global_ymax = 0.0
+        profiles = []
+
+        # ------------------------------------------------
+        # first pass: load all data (for shared y-limits)
+        # ------------------------------------------------
+        for k in ks:
+            folder = os.path.join(base_dir, f"experiment_forces_N{N}", str(k), run_id)
+            ft = os.path.join(folder, tensile_filename)
+
+            if not os.path.isfile(ft):
+                profiles.append(None)
+                continue
+
+            tensile_ts = read_timeseries_TN(ft, mov_window=N_MOV)
+            mean, std = avg_last(tensile_ts, N_AVG)
+
+            mean *= 1000.0  # pN
+            std  *= 1000.0
+
+            global_ymax = max(global_ymax, np.max(mean + std))
+            profiles.append((mean, std))
+
+        # ------------------------------------------------
+        # plot
+        # ------------------------------------------------
+        for ax, k, prof in zip(axes, ks, profiles):
+            if prof is None:
+                ax.text(0.5, 0.5, f"missing k={k}",
+                        ha="center", va="center", transform=ax.transAxes)
+                continue
+
+            mean, std = prof
+            idx = np.arange(len(mean))
+
+            ax.plot(idx, mean, lw=2, color="purple", label=r"$\kappa$"+f"={k}")
+            ax.fill_between(
+                idx,
+                mean - std,
+                mean + std,
+                color="purple",
+                alpha=0.18)
+
+            # reference line
+            ref_steps = np.arange(1, len(mean) + 1)
+            ref = 0.5 * ref_steps[::-1]
+            ref_std = 0.1 * ref_steps[::-1]
+
+            ax.plot(idx, ref, "--", color="grey", lw=1.2, label="Reference")
+            ax.fill_between(
+                idx,
+                ref - ref_std,
+                ref + ref_std,
+                color="grey",
+                alpha=0.15)
+
+            ax.set_ylabel("Force [pN]", fontsize=11)
+            ax.set_ylim(0, 1.05 * global_ymax)
+            ax.grid(False)
+            ax.legend()
+
+        axes[-1].set_xlabel("Monomer index", fontsize=13)
+        axes[-1].set_xlim(0, int(N))
+
+        fig.tight_layout(h_pad=0.15)
+
+        outname = os.path.join(
+            outdir,
+            f"tensile_profile_stackk_N{N}_last{N_AVG}_mov{N_MOV}_with_stdev.png")
+        fig.savefig(outname, dpi=dpi, bbox_inches="tight")
+        plt.close(fig)
+
+        print("saved:", outname)
+
+
+plot_tensile_profiles_onefig_per_N(Ns, ks, base_dir, run_id="11636")

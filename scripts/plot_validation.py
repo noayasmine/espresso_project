@@ -468,7 +468,7 @@ def plot_cumulative_force_across_gammas(config, lj_dir, target_shear, avg_window
     colors = plt.get_cmap("Dark2").colors
 
     lj_match = re.search(r"LJ_(\d{5})", lj_dir)
-    lj_text = f"Lennard Jones potential = {int(lj_match.group(1)) / 1e2:.2f} × 4kT" if lj_match else ""
+    lj_text = f"Lennard Jones potential = {int(lj_match.group(1)) / 1e2:.2f} kT" if lj_match else ""
 
     gamma_dirs = sorted(
         [d for d in os.listdir(lj_dir) if os.path.isdir(os.path.join(lj_dir, d)) and re.match(r"^gamma_\d+$", d)],
@@ -538,8 +538,7 @@ def plot_cumulative_force_across_gammas(config, lj_dir, target_shear, avg_window
             idx, y, yerr=e,
             marker="o", lw=1.2, elinewidth=1, capsize=3, markersize=3,
             color=colors[i % len(colors)],
-            label=fr"$\gamma$={gval:.4f}" + r" ($t^{2}_{50}$=" + f"{round(norm_mse, 3)})"
-        )
+            label=fr"$\gamma$={gval:.4f}" + r" ($t^{2}_{50}$=" + f"{round(norm_mse, 3)})")
 
     mask = ~np.isnan(ref)
     ax.plot(idx, ref, "--", lw=1.2, color="grey", label=r"Fu et al. $0.5 \pm 0.1$ pN/mono")
@@ -567,10 +566,225 @@ def plot_cumulative_force_across_gammas(config, lj_dir, target_shear, avg_window
 
     return mse_by_gamma
 
-def plot_recoiling_across_LJ_for_gamma(config, root_dir, target_gamma, N_mono, time_step=None, add_expected=True, aggregate_runs=True, show_individual_when_agg=False, skip=[]):
+def plot_cumulative_force_across_gammas_aggregate(config, lj_dir, target_shear,
+                                                  avg_window=100, time_avg_steps=100,
+                                                  start_from_right=30,
+                                                  monomer_index=50,
+                                                  plot_timeseries=True,
+                                                  dt_ms=0.1,
+                                                  skip=[]):
+    """
+    Plot cumulative tensile force vs monomer index for all gamma_* in lj_dir at a given shear.
+
+    Behavior:
+      - gamma_*/shear_{target_shear}/run_*/drag_forces.npz
+      - per run:
+          * force magnitude
+          * trailing moving average (avg_window)
+          * time average over last time_avg_steps saved points
+      - error bars = std across runs
+      - additionally:
+          * per-gamma overlay plot of full timeseries (all runs) with x-axis in time (ms)
+          * per-gamma overlay plot of last time_avg_steps only with x-axis in time (ms)
+    """
+
     plt.style.use("seaborn-v0_8-whitegrid")
     colors = plt.get_cmap("Dark2").colors
+
+    gamma_dirs = sorted([d for d in os.listdir(lj_dir)
+                          if os.path.isdir(os.path.join(lj_dir, d)) and re.match(r"^gamma_\d+$", d)],
+                         key=lambda g: int(g.split("_")[1]))
+
     skip_set = set(skip)
+    runs_timeavg_by_gamma = {}
+    N_detect = None
+
+    for gdir in gamma_dirs:
+        gval = int(gdir.split("_")[1]) / 1e4
+        if gval in skip_set:
+            print(f"[skip] {gval}")
+            continue
+
+        shear_dir = os.path.join(lj_dir, gdir, f"shear_{target_shear}")
+        if not os.path.isdir(shear_dir):
+            print(f"[skip] {shear_dir} not found")
+            continue
+
+        run_dirs = sorted([d for d in os.listdir(shear_dir)
+                            if os.path.isdir(os.path.join(shear_dir, d)) and re.match(r"^run_\d+$", d)])
+
+        if not run_dirs:
+            print(f"[skip] no run_* folders in {shear_dir}")
+            continue
+
+        per_run_values = []
+        ts_full = []
+        ts_last = []
+
+        for rdir in run_dirs:
+            fpath = os.path.join(shear_dir, rdir, "drag_forces.npz")
+            if not os.path.isfile(fpath):
+                print(f"[skip] {fpath} not found")
+                continue
+
+            F = np.load(fpath)["forces"]
+            if F.ndim != 3 or F.shape[0] < 1:
+                print(f"[skip] unexpected forces shape {F.shape} in {fpath}")
+                continue
+
+            if N_detect is None:
+                N_detect = F.shape[1]
+                print(f"Running for N={N_detect} monomers")
+
+            N_use = min(N_detect, F.shape[1])
+            if monomer_index >= N_use:
+                print(f"[skip] monomer_index={monomer_index} out of range for {fpath}")
+                continue
+
+            Fmag = np.linalg.norm(F[:, :N_use, :], axis=2) * 1000.0
+            Fm = moving_average_trailing_matrix(Fmag, avg_window)
+
+            nT = Fm.shape[0]
+            n_avg = min(time_avg_steps, nT)
+
+            if plot_timeseries:
+                ts_full.append(Fm[:, monomer_index].copy())
+                ts_last.append(Fm[-n_avg:, monomer_index].copy())
+
+            per_run = Fm[-n_avg:, :].mean(axis=0)
+            per_run_values.append(per_run)
+
+        if len(per_run_values) == 0:
+            print(f"[skip] no usable runs for gamma {gval:.4f}")
+            continue
+
+        runs_timeavg_by_gamma[gval] = np.vstack(per_run_values)
+
+        if plot_timeseries and len(ts_full) > 0:
+            fig_ts, ax_ts = plt.subplots(figsize=(6, 4))
+
+            for ts in ts_full:
+                t = np.arange(len(ts)) * dt_ms
+                ax_ts.plot(t, ts, lw=1.0, alpha=0.35, color="purple")
+
+            minT = min(len(ts) for ts in ts_full)
+            if minT > 1:
+                ts_stack = np.vstack([ts[:minT] for ts in ts_full])
+                t_mean = np.arange(minT) * dt_ms
+                ax_ts.plot(t_mean, ts_stack.mean(axis=0), lw=2.0, color="black", label="mean")
+
+            ax_ts.set_xlabel("Time [ms]", fontsize=13)
+            ax_ts.set_xlim(0,200)
+            ax_ts.set_ylabel(r"$|F^{\mathrm{drag}}|$ [pN]", fontsize=13)
+            #ax_ts.set_title(fr"$\gamma={gval:.4f}$, monomer {monomer_index}", fontsize=11)
+            ax_ts.grid(False)
+            ax_ts.legend(frameon=False, fontsize=9)
+
+            plt.tight_layout()
+            out_ts = os.path.join(shear_dir, f"drag_force_timeseries_all_runs_m{monomer_index}.png")
+            plt.savefig(out_ts, dpi=300, bbox_inches="tight")
+            plt.close(fig_ts)
+            print(f"Saved {out_ts}")
+
+            fig_ts2, ax_ts2 = plt.subplots(figsize=(6, 4))
+
+            # determine absolute start index from full timeseries length
+            T_full = max(len(ts) for ts in ts_full)
+
+            for ts in ts_last:
+                n = len(ts)
+                t = (np.arange(n) + T_full - n) * dt_ms
+                ax_ts2.plot(t, ts, lw=1.0, alpha=0.35, color="purple")
+
+            minT2 = min(len(ts) for ts in ts_last)
+            if minT2 > 1:
+                ts_stack2 = np.vstack([ts[-minT2:] for ts in ts_last])
+                t_mean2 = (np.arange(minT2) + T_full - minT2) * dt_ms
+                ax_ts2.plot(t_mean2, ts_stack2.mean(axis=0), lw=2.0, color="black", label="mean")
+            ax_ts2.set_xlim(np.min(t_mean2), 200)
+            ax_ts2.set_xlabel("Time [ms]", fontsize=13)
+            ax_ts2.set_ylabel(r"$|F^{\mathrm{drag}}|$ [pN]", fontsize=13)
+            #ax_ts2.set_title(fr"$\gamma={gval:.4f}$, monomer {monomer_index} (last window)", fontsize=11)
+            ax_ts2.grid(False)
+            ax_ts2.legend(frameon=False, fontsize=9)
+
+            plt.tight_layout()
+            out_ts2 = os.path.join(shear_dir, f"drag_force_timeseries_last{time_avg_steps}_m{monomer_index}.png")
+            plt.savefig(out_ts2, dpi=300, bbox_inches="tight")
+            plt.close(fig_ts2)
+            print(f"Saved {out_ts2}")
+
+
+    if not runs_timeavg_by_gamma or N_detect is None:
+        print("No usable force data found for this LJ folder and shear.")
+        return {}
+
+    ref_per_mono = 0.5
+    sigma_per_mono = 0.1
+
+    idx = np.arange(N_detect)
+    start = min(start_from_right, N_detect)
+
+    steps_from_right = start - np.arange(1, start + 1) + 1
+    ref = np.full(N_detect, np.nan)
+    sigma_ref = np.full(N_detect, np.nan)
+    ref[:start] = ref_per_mono * steps_from_right
+    sigma_ref[:start] = sigma_per_mono * steps_from_right
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    mse_by_gamma = {}
+
+    for i, (gval, run_mat) in enumerate(sorted(runs_timeavg_by_gamma.items(), key=lambda kv: kv[0])):
+        sub = run_mat[:, :start][:, ::-1]
+        cum = np.cumsum(sub, axis=1)[:, ::-1]
+
+        mu = cum.mean(axis=0)
+        sig = cum.std(axis=0, ddof=1) if cum.shape[0] > 1 else np.zeros_like(mu)
+
+        diff = mu - ref[:start]
+        norm_mse = float(np.mean((diff / sigma_ref[:start]) ** 2))
+        mse_by_gamma[gval] = norm_mse
+
+        y = np.full(N_detect, np.nan)
+        e = np.full(N_detect, np.nan)
+        y[:start] = mu
+        e[:start] = sig
+
+        ax.errorbar(idx, y, yerr=e,
+                    marker="o", lw=1.2, elinewidth=0.5, capsize=2, markersize=2,
+                    color=colors[i % len(colors)],
+                    label=fr"$\gamma$={gval:.4f} ($t^2_{{100}}$={round(norm_mse, 3)})")
+
+    mask = ~np.isnan(ref)
+    ax.plot(idx, ref, "--", lw=1.2, color="grey", label=r"Fu et al. $0.5 \pm 0.1$ pN/mono")
+    ax.fill_between(idx[mask], ref[mask] - sigma_ref[mask], ref[mask] + sigma_ref[mask], alpha=0.25, color="grey")
+
+    ax.set_xlabel("Monomer index", fontsize=15)
+    ax.set_ylabel("Tensile force [pN]", fontsize=15)
+
+    xtick_step = 5 if N_detect <= 60 else 10 if N_detect <= 150 else max(1, N_detect // 15)
+    ax.set_xticks(np.arange(0, N_detect + 1, xtick_step))
+    ax.set_xlim(-1, max(start, N_detect))
+
+    ax.grid(False)
+    ax.legend(frameon=False, fontsize=9)
+    plt.tight_layout()
+
+    out = os.path.join(lj_dir, f"force_cumulative_vs_monomer_all_gamma_shear_{target_shear}.png")
+    plt.savefig(out, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved {out}")
+
+    print("== Normalized MSE per gamma ==")
+    for gval in sorted(mse_by_gamma):
+        print(f"  gamma={gval:.4f}: chi^2 = {mse_by_gamma[gval]:.6g}")
+
+    return mse_by_gamma
+
+def plot_recoiling_across_LJ_for_gamma(config, root_dir, target_gamma, N_mono, time_step=None, add_expected=True, aggregate_runs=True, show_individual_when_agg=False, skip=None, t_fit_max=0.4, t_fit_min=None):
+    plt.style.use("seaborn-v0_8-whitegrid")
+    colors = plt.get_cmap("Dark2").colors
+    skip_set = set(skip or [])
 
     TIMESTEP = config["simulation"]["TIME_STEP"]
     STEPS = config["simulation"]["STEPS"]
@@ -589,15 +803,13 @@ def plot_recoiling_across_LJ_for_gamma(config, root_dir, target_gamma, N_mono, t
         expected_x = np.array([0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8])
         expected_y = np.array([1, 0.4, 0.15, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
         expected_err = np.array([0.1, 0.3, 0.2, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15])
-        #theoretical_R = 0.3
-        theoretical_R = 0.
+        theoretical_R = 0.0
         ylim = (-0.1, 1.0)
     elif N_mono == 100:
         expected_x = np.array([0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8])
         expected_y = np.array([1, 0.55, 0.25, 0.15, 0.1, 0.1, 0.1, 0.1, 0.1])
         expected_err = np.array([0.1, 0.15, 0.15, 0.15, 0.1, 0.1, 0.1, 0.1, 0.1])
-        #theoretical_R = 0.4
-        theoretical_R = 0.
+        theoretical_R = 0.0
         ylim = (-0.05, 1.0)
     else:
         raise ValueError("N_mono must be 50 or 100")
@@ -605,20 +817,26 @@ def plot_recoiling_across_LJ_for_gamma(config, root_dir, target_gamma, N_mono, t
     lj_dirs = [d for d in os.listdir(root_dir) if os.path.isdir(os.path.join(root_dir, d)) and re.match(r"^LJ_\d{5}$", d)]
     lj_dirs.sort(key=lambda d: int(d.split("_")[1]))
 
-    def reduced_t2(t, y_mean, y_std, x_ref, y_ref, err_ref):
-        mask = (x_ref >= t[0]) & (x_ref <= t[-1])
+    def reduced_t2(t, y_mean, y_std, x_ref, y_ref, err_ref, t_fit_max=0.4, t_fit_min=None):
+        mask = t <= t_fit_max
+        if t_fit_min is not None:
+            mask &= t >= t_fit_min
+        mask &= (t >= x_ref[0]) & (t <= x_ref[-1])
         if not np.any(mask):
             return np.inf, 0
-        y_i = np.interp(x_ref[mask], t, y_mean)
-        ystd_i = np.interp(x_ref[mask], t, y_std)
-        sig = np.maximum(err_ref[mask] + ystd_i, 1e-12)
-        return float(np.mean(((y_i - y_ref[mask]) / sig) ** 2)), int(mask.sum())
+        t_fit = t[mask]
+        y_fit = y_mean[mask]
+        ystd_fit = y_std[mask]
+        yref_i = np.interp(t_fit, x_ref, y_ref)
+        errref_i = np.interp(t_fit, x_ref, err_ref)
+        sig = np.maximum(errref_i + ystd_fit, 1e-12)
+        return float(np.mean(((y_fit - yref_i) / sig) ** 2)), int(t_fit.size)
 
     fig, ax = plt.subplots(figsize=(6, 4))
     t2_by_lj = {}
     plotted = 0
 
-    for i, lj in enumerate(lj_dirs):
+    for lj in lj_dirs:
         lj_kT = int(lj.split("_")[1]) / 1e2
         if int(lj_kT) in skip_set:
             continue
@@ -640,23 +858,16 @@ def plot_recoiling_across_LJ_for_gamma(config, root_dir, target_gamma, N_mono, t
             print(f"[INFO] {lj}/{gamma_folder} : no positions.npz file")
             continue
 
-
         series = []
         for fpos in files:
             pos = np.load(fpos)["positions"]
             E = tethered_max_extension_ts(pos, anchor=0)
             if E[0] <= 0:
                 continue
-            if "/run_" in fpos:
-                series.append((E - theoretical_R) / (E[0] - theoretical_R))
-            else:
-                series.append(E / E[0])
+            series.append((E - theoretical_R) / (E[0] - theoretical_R) if "/run_" in fpos else E / E[0])
 
         if not series:
             continue
-
-        print(f"[INFO] {lj}/{gamma_folder}")
-        print(f"    runs used: {len(series)}")
 
         min_len = min(len(s) for s in series)
         Y = np.stack([s[:min_len] for s in series])
@@ -669,39 +880,33 @@ def plot_recoiling_across_LJ_for_gamma(config, root_dir, target_gamma, N_mono, t
         if aggregate_runs and Y.shape[0] > 1:
             y_mean = Y.mean(axis=0)
             y_std = Y.std(axis=0, ddof=1)
-
             if show_individual_when_agg:
                 for r in range(Y.shape[0]):
                     ax.plot(t, Y[r], lw=0.8, alpha=0.25, color=color)
-
-            t2, n_used = reduced_t2(t, y_mean, y_std, expected_x, expected_y, expected_err)
+            t2, n_used = reduced_t2(t, y_mean, y_std, expected_x, expected_y, expected_err, t_fit_max=t_fit_max, t_fit_min=t_fit_min)
             t2_by_lj[lj_label] = (t2, n_used)
-
-            label = fr"$\epsilon_{{LJ}}={lj_label}$ $(t^2_8={t2:.3f})$"
-            ax.plot(t, y_mean, lw=1.8, color=color, label=label)
+            ax.plot(t, y_mean, lw=1.8, color=color, label=fr"$\epsilon_{{LJ}}={lj_label}$ $(t^2={t2:.3f},\,n={n_used})$")
             ax.fill_between(t, y_mean - y_std, y_mean + y_std, alpha=0.2, color=color)
-
         else:
             t2_vals = []
+            n_used_any = 0
             for r in range(Y.shape[0]):
                 ax.plot(t, Y[r], lw=1.2, color=color, alpha=0.9)
-                t2_r, n_used = reduced_t2(t, Y[r], np.zeros_like(Y[r]), expected_x, expected_y, expected_err)
+                t2_r, n_used = reduced_t2(t, Y[r], np.zeros_like(Y[r]), expected_x, expected_y, expected_err, t_fit_max=t_fit_max, t_fit_min=t_fit_min)
                 if np.isfinite(t2_r):
                     t2_vals.append(t2_r)
-
+                    n_used_any = max(n_used_any, n_used)
             if t2_vals:
                 t2 = float(np.mean(t2_vals))
-                t2_by_lj[lj_label] = (t2, n_used)
-                ax.plot([], [], lw=1.8, color=color, label=fr"$\epsilon_{{LJ}}={lj_label}$ $(t^2_8={t2:.3f})$")
-
-    if plotted == 0:
-        print("No recoiling data found.")
-        plt.close(fig)
-        return {}
+                t2_by_lj[lj_label] = (t2, n_used_any)
+                ax.plot([], [], lw=1.8, color=color, label=fr"$\epsilon_{{LJ}}={lj_label}$ $(t^2={t2:.3f},\,n={n_used_any})$")
 
     if add_expected:
         ax.plot(expected_x, expected_y, "--", lw=1.2, color="grey", label="Fu et al.")
         ax.fill_between(expected_x, expected_y - expected_err, expected_y + expected_err, alpha=0.25, color="grey")
+
+    if t_fit_max is not None:
+        ax.axvline(t_fit_max, ls=":", lw=1.0, color="k", alpha=0.5)
 
     ax.set_xlim(0, 0.8)
     ax.set_ylim(*ylim)

@@ -9,8 +9,13 @@ def load_npz_first(path):
 # ----------------------------
 # settings
 # ----------------------------
-base_self  = "/home/nroebersen/espresso_project/experiments/density_experiment/selfassociation"
-base_noself = "/home/nroebersen/espresso_project/experiments/density_experiment/no_selfassociation"
+
+#shear=3636
+#shear=5455
+shear=1454
+
+base_self  = f"/home/nroebersen/espresso_project/experiments/density_experiment/{shear}/selfassociation"
+base_noself = f"/home/nroebersen/espresso_project/experiments/density_experiment/{shear}/no_selfassociation"
 
 AREA = 72.0
 USE_DENSITY_X = True
@@ -18,16 +23,15 @@ N_LAST = 20
 N_MOV = 20  # moving average window for tensile timeseries
 INCLUDE_NS = [20, 40, 60, 80, 100, 120, 140, 160, 180, 200]
 THRESHOLD = 20.0  # pN
-save_thr  = "/home/nroebersen/espresso_project/experiments/density_experiment/num_monomers_above_threshold_vs_density_overlay.png"
+save_thr  = f"/home/nroebersen/espresso_project/experiments/density_experiment/{shear}/num_monomers_above_threshold_vs_density_overlay.png"
 
 # choose plotting window for timeseries (indices, inclusive/exclusive like Python slices)
 T1 = 0
 T2 = 1500  # e.g. 5000 or None
 
-save_stats = "/home/nroebersen/espresso_project/experiments/density_experiment/tensile_force_stats_vs_density_overlay.png"
-save_ts    = "/home/nroebersen/espresso_project/experiments/density_experiment/tensile_force_timeseries_subplots_overlay.png"
-save_hist  = "/home/nroebersen/espresso_project/experiments/density_experiment/tensile_force_equilibrium_histograms_overlay.png"
-
+save_stats = f"/home/nroebersen/espresso_project/experiments/density_experiment/{shear}/tensile_force_stats_vs_density_overlay.png"
+save_ts    = f"/home/nroebersen/espresso_project/experiments/density_experiment/{shear}/tensile_force_timeseries_subplots_overlay.png"
+save_hist  = f"/home/nroebersen/espresso_project/experiments/density_experiment/{shear}/tensile_force_equilibrium_histograms_overlay.png"
 
 # ----------------------------
 # helpers
