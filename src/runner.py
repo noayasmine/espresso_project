@@ -61,9 +61,9 @@ def sample_sphere_filtered_min_dist(npoints, xc, yc, zc, R, min_dist, max_attemp
 
         # reject bottom points inside circle
         r2 = (x - xc)**2 + (y - yc)**2
-        if (z < zc) and (r2 <= 0.5):
+        if (z < zc) and (r2 <= 1):
             continue
-        if (z < 0.531):
+        if (z < 1):
             continue
 
         # min-distance check (3D)
@@ -107,8 +107,9 @@ def compute_start_positions(config):
     BOX_Ly = config["geometry"]["BOX_Ly"]
     BOX_Lz = config["geometry"]["BOX_Lz"]
     min_dist = 15.0 * a
+    # min_dist = 20.0 * a
     offset = 0.5 * AGRID + a + 1e-07
-    offset_sphere = AGRID + a + 1e-07
+    offset_sphere = AGRID + 4*a + 1e-07
 
     if N_POLYMERS == 1:
         random_x = np.array([BOX_Lx / 5])
@@ -150,6 +151,98 @@ def compute_start_positions(config):
 
     return start_positions
 
+def _unit(v):
+    n = np.linalg.norm(v)
+    if n == 0.0:
+        raise ValueError("Zero-length vector cannot be normalized.")
+    return v / n
+
+def rotation_matrix_from_vectors(a, b):
+    """
+    Return R such that R @ a == b for unit vectors a, b (in R^3).
+    Uses Rodrigues' rotation formula, with careful handling of a ~ +/- b.
+    """
+    a = _unit(np.asarray(a, dtype=float))
+    b = _unit(np.asarray(b, dtype=float))
+
+    v = np.cross(a, b)
+    c = float(np.dot(a, b))  # cos(theta)
+    s = np.linalg.norm(v)    # sin(theta)
+
+    if s < 1e-12:
+        # a and b are (anti-)parallel
+        if c > 0.0:
+            return np.eye(3)  # same direction
+        # opposite direction: rotate 180 degrees about any axis orthogonal to a
+        # choose an axis not parallel to a
+        tmp = np.array([1.0, 0.0, 0.0]) if abs(a[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+        axis = _unit(np.cross(a, tmp))
+        # Rodrigues for theta = pi: R = I + 2*K^2 (since sin(pi)=0, 1-cos(pi)=2)
+        K = np.array([[0.0, -axis[2], axis[1]],
+                      [axis[2], 0.0, -axis[0]],
+                      [-axis[1], axis[0], 0.0]])
+        return np.eye(3) + 2.0 * (K @ K)
+
+    # general case
+    axis = v / s
+    K = np.array([[0.0, -axis[2], axis[1]],
+                  [axis[2], 0.0, -axis[0]],
+                  [-axis[1], axis[0], 0.0]])
+    # Rodrigues: R = I + sinθ K + (1-cosθ) K^2
+    return np.eye(3) + s * K + (1.0 - c) * (K @ K)
+
+def check_polymer_geometry(positions, a, max_consecutive=1.25, min_pairwise=0.85, check_all_pairs=True, raise_on_fail=True):
+    """
+    positions: (N_POLYMERS, N_MONOMERS, 3)
+    max_consecutive: consecutive distance must be <= max_consecutive*(2a)
+    min_pairwise: any pairwise distance must be >= min_pairwise*(2a)
+    """
+    Np, Nm, _ = positions.shape
+    twoa = 2.0 * float(a)
+    max_bond = max_consecutive * twoa
+    min_sep = min_pairwise * twoa
+
+    bad = False
+
+    for i in range(Np):
+        r = positions[i]  # (Nm, 3)
+
+        # 1) consecutive monomer distances: validates "order" matches a linear chain
+        dr = r[1:] - r[:-1]
+        d = np.linalg.norm(dr, axis=1)
+        dmax = float(d.max()) if d.size else 0.0
+        dmin = float(d.min()) if d.size else 0.0
+        if np.any(d > max_bond):
+            bad = True
+            idx = np.where(d > max_bond)[0]
+            print(f"[FAIL] polymer {i}: consecutive distances too large at bonds {idx.tolist()}. "
+                  f"max={dmax:.6g}, threshold={max_bond:.6g} (2a={twoa:.6g})")
+        else:
+            print(f"[OK] polymer {i}: consecutive distances in [{dmin:.6g}, {dmax:.6g}] (2a={twoa:.6g})")
+
+        # 2) intra-polymer overlap / too-close check
+        if check_all_pairs and Nm >= 2:
+            # full pairwise distance matrix without loops
+            diff = r[:, None, :] - r[None, :, :]
+            dist = np.linalg.norm(diff, axis=2)
+            iu = np.triu_indices(Nm, k=1)
+            d_pairs = dist[iu]
+            pmin = float(d_pairs.min()) if d_pairs.size else np.inf
+            if np.any(d_pairs < min_sep):
+                bad = True
+                w = np.where(d_pairs < min_sep)[0]
+                # show up to first few offending pairs
+                show = w[:8]
+                pairs = list(zip(iu[0][show].tolist(), iu[1][show].tolist()))
+                print(f"[FAIL] polymer {i}: monomers too close. min_pairwise={pmin:.6g}, "
+                      f"threshold={min_sep:.6g} (2a={twoa:.6g}). Example pairs {pairs}")
+            else:
+                print(f"[OK] polymer {i}: min pairwise distance = {pmin:.6g} (threshold={min_sep:.6g})")
+
+    if bad and raise_on_fail:
+        raise ValueError("Polymer geometry check failed: order/bond lengths or intra-polymer overlaps detected.")
+
+
 def load_polymer_positions(start_positions, config, pos_dir=None):
     """
     Places pre-defined polymer conformations at start_positions.
@@ -161,12 +254,13 @@ def load_polymer_positions(start_positions, config, pos_dir=None):
     seed = config["simulation"]["SEED"]
     k = int(config["physical"]["k"])
     AGRID = config["geometry"]["AGRID"]
+    a = config["physical"]["a"]
 
     #if run_type == "validation_uncoiling":
-    path_to_file = f"./configs/init_polymer_positions_multiple_runs_N{N_MONOMERS}/run_{seed}/init_positions.npz"
+    #path_to_file = f"./configs/init_polymer_positions_multiple_runs_N{N_MONOMERS}/run_{seed}/init_positions.npz"
     # else:
-    #     pos_dir = f"./configs/initial_polymer_positions_k_10"
-    #     path_to_file = os.path.join(pos_dir, f"init_positions_{N_MONOMERS}_seed_{seed}.npz")
+    pos_dir = f"./configs/initial_polymer_positions_k_1000"
+    path_to_file = os.path.join(pos_dir, f"init_positions_{N_MONOMERS}_seed_{seed}.npz")
 
     print(f"Read out position file: {path_to_file}")
     data = np.load(path_to_file)
@@ -185,11 +279,13 @@ def load_polymer_positions(start_positions, config, pos_dir=None):
     yc = config["geometry"].get("SPHERE_CENTER_Y", 25.0)
     zc = config["geometry"].get("SPHERE_CENTER_Z",config["geometry"].get("RADIUS_OBJECT", 0.0))
     zc += 0.5 * config["geometry"]["AGRID"]
-    R = float(config["geometry"]["RADIUS_OBJECT"])
+    offset_sphere = AGRID + 4*a + 1e-07
+    R = float(config["geometry"]["RADIUS_OBJECT"]) + offset_sphere
+    
     print(xc,yc,zc)
+    center = np.array([xc, yc, zc], dtype=float)
+    ez = np.array([0.0, 0.0, 1.0], dtype=float)  # original polymer "normal"
 
-    ez = np.array([0.0, 0.0, 1.0])  # original polymer direction
-   
     for i in range(N_POLYMERS):
         base = shifted[0]           # (N_MONOMERS, 3)
         pos0 = start_positions[i]   # (3,)
@@ -197,11 +293,14 @@ def load_polymer_positions(start_positions, config, pos_dir=None):
         polymer = base.copy()
 
         if sphere:
-            # tbd
-            continue
+            n = _unit(pos0 - center)                 # outward normal at pos0
+            R = rotation_matrix_from_vectors(ez, n)  # rotate +z -> n
+            polymer = (R @ polymer.T).T              # apply to all monomers
 
         # translate polymer to its start position
         positions[i] = polymer + pos0
+
+    # check_polymer_geometry(positions, a=a, max_consecutive=1.1, min_pairwise=0.95, check_all_pairs=True, raise_on_fail=True)
 
     config["simulation"]["POSITIONS"] = positions
     print("Added positions with shape:")
@@ -580,32 +679,38 @@ if __name__ == "__main__":
         config["simulation"]["SAVE_VTK"] = True
         config["simulation"]["SHEAR"] = shear
 
-        config["simulation"]["COMPUTE_POSITIONS"] = True
+        config["simulation"]["COMPUTE_POSITIONS"] = False
 
         config["simulation"]["SEED"] = 1
 
         # Run for max density used in the simple geometry, which is 200 polymers in a 72 mum^2 area
         # calculate number of polymers needed to match that density 
         config["simulation"]["N_POLYMERS"] = int(200/72 * 4 * np.pi * config["geometry"]["RADIUS_OBJECT"] ** 2)
-        # config["simulation"]["N_POLYMERS"] = int(1/72 * 4 * np.pi * config["geometry"]["RADIUS_OBJECT"] ** 2)
+        # config["simulation"]["N_POLYMERS"] = int(10/72 * 4 * np.pi * config["geometry"]["RADIUS_OBJECT"] ** 2)
+        # config["simulation"]["N_POLYMERS"] = 200
+
         config["geometry"]["BOX_Lx"] = 100
         config["geometry"]["BOX_Ly"] = 50
         config["geometry"]["BOX_Lz"] = 30
 
         config["geometry"]["SPHERE"] = True
-        config["simulation"]["MINIMIZATION_STEPS"] = 200
+        # config["simulation"]["MINIMIZATION_STEPS"] = 200
 
         config["physical"]["k"] = 1000
         config["physical"]["N_MONOMERS"] = 50
 
         config["simulation"]["TOTAL_TIME"] = 0.01
 
-        config["simulation"]["TIME_STEP"] = 0.001
-        config["simulation"]["LB_TIME_STEP"] = 0.001
+        # config["simulation"]["TIME_STEP"] = 0.001
+        # config["simulation"]["LB_TIME_STEP"] = 0.001
+
+        config["simulation"]["TIME_STEP"] = 0.0005
+        config["simulation"]["LB_TIME_STEP"] = 0.0005
 
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config)
         add_polymer_positions(config)
+        config["geometry"]["SPHERE"] = False
     
     if run_type == "experiment_sphere":
         shear = float(sys.argv[2])

@@ -499,8 +499,9 @@ def run_simulation(params):
         # only adding the sphere as a constraint here, later for LB
         logging.info("Adding Sphere.")
         # add sphere as constraint 0.5 agrid from the wall
-        sphere_constraint = espressomd.shapes.Sphere(radius=radius_object + AGRID, center=[25, 25, radius_object + 0.5 * AGRID], direction=1)
-        #sphere_constraint = espressomd.shapes.Sphere(radius=radius_object + 0.5 * AGRID, center=[25, 25, radius_object + 0.5 * AGRID], direction=1)
+        sphere_constraint = espressomd.shapes.Sphere(radius=(radius_object + AGRID), center=[25, 25, radius_object + 0.5*AGRID], direction=1)
+        print(f"Adding sphere constraint at center={25,25,radius_object + 0.5*AGRID} with R={radius_object + AGRID}")
+        # sphere_constraint = espressomd.shapes.Sphere(radius=radius_object + 0.5 * AGRID, center=[25, 25, radius_object + 0.5 * AGRID], direction=1)
         # particle type per polymer range from 0 to N_POLYMER-1, giving LB shapes "particle type" N_POLYMERS
         system.constraints.add(particle_type=N_POLYMERS, penetrable=False, shape=sphere_constraint)
 
@@ -546,6 +547,30 @@ def run_simulation(params):
         start_time_energy_minimization = time.time()
         system.integrator.set_steepest_descent(f_max=0, gamma=0.001, max_displacement=0.0001 * sigma)
 
+        logging.info(f"Energy minimization: {minimization_steps} steps")
+
+        if save_VTK:
+            for i in range(minimization_steps):
+                print(f"step {i + 1} of {minimization_steps}", end='\r', flush=True)
+                system.part.writevtk(outdir + f"particles_energy_minimization_{i:05d}.vtk")
+                system.integrator.run(STEPS)
+
+        if not save_VTK:
+            for i in range(minimization_steps):
+                print(f"step {i + 1} of {minimization_steps}", end='\r', flush=True)
+                system.integrator.run(STEPS)
+
+        end_time_energy_minimization = time.time()
+        print(f"Runtime energy minimization step: {end_time_energy_minimization - start_time_energy_minimization:.2f} seconds")
+        np.savez_compressed(os.path.join(DIRECTORY, "init_positions.npz"), positions=accumulator_positions.time_series())
+        print(f"Positions shape: {accumulator_positions.time_series().shape}")
+
+    if geo_sphere and N_POLYMERS > 0:
+        # energy minimization with steepest descent integrator
+        # to coil up polymers without overlap
+        start_time_energy_minimization = time.time()
+        system.integrator.set_steepest_descent(f_max=0, gamma=0.001, max_displacement=0.0001 * sigma)
+        minimization_steps=200
         logging.info(f"Energy minimization: {minimization_steps} steps")
 
         if save_VTK:
@@ -631,6 +656,7 @@ def run_simulation(params):
 
     if save_VTK and N_POLYMERS > 0:
         for i in range(int(LOOPS)):
+            
             if i==1:
                 np.savez_compressed(os.path.join(DIRECTORY, "init_positions.npz"), positions=accumulator_positions.time_series())
                 print(f"Positions shape: {accumulator_positions.time_series().shape}")
