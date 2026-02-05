@@ -229,7 +229,8 @@ def plot_time_series(config, base_dir, plot_type, validation_type="free", Box_Lx
             ax.plot(t, y, lw=1.5, color=colors[i % len(colors)], label=lbl)
 
         ax.set_xlabel("Time [s]", fontsize=15)
-        ax.set_ylabel(r"$\hat{E}(t)$", fontsize=15)
+        ax.set_xlim(0,0.3)
+        ax.set_ylabel(r"$\hat{E}_{\mathrm{teth}}(t)$", fontsize=15)
         ax.axhline(1, color="k", linestyle="--")
         ax.legend(frameon=False, fontsize=10, ncol=2)
         ax.grid(False)

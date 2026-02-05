@@ -60,10 +60,10 @@ def sample_sphere_filtered_min_dist(npoints, xc, yc, zc, R, min_dist, max_attemp
         z = zc + R * v[2]
 
         # reject bottom points inside circle
-        r2 = (x - xc)**2 + (y - yc)**2
-        if (z < zc) and (r2 <= 1):
-            continue
-        if (z < 1):
+        # r2 = (x - xc)**2 + (y - yc)**2
+        # if (z < zc) and (r2 <= 1):
+        #     continue
+        if (z < 1.1):
             continue
 
         # min-distance check (3D)
@@ -107,9 +107,9 @@ def compute_start_positions(config):
     BOX_Ly = config["geometry"]["BOX_Ly"]
     BOX_Lz = config["geometry"]["BOX_Lz"]
     min_dist = 15.0 * a
-    # min_dist = 20.0 * a
+
     offset = 0.5 * AGRID + a + 1e-07
-    offset_sphere = AGRID + 4*a + 1e-07
+    offset_sphere = a + 1e-07
 
     if N_POLYMERS == 1:
         random_x = np.array([BOX_Lx / 5])
@@ -279,7 +279,7 @@ def load_polymer_positions(start_positions, config, pos_dir=None):
     yc = config["geometry"].get("SPHERE_CENTER_Y", 25.0)
     zc = config["geometry"].get("SPHERE_CENTER_Z",config["geometry"].get("RADIUS_OBJECT", 0.0))
     zc += 0.5 * config["geometry"]["AGRID"]
-    offset_sphere = AGRID + 4*a + 1e-07
+    offset_sphere = a + 1e-07
     R = float(config["geometry"]["RADIUS_OBJECT"]) + offset_sphere
     
     print(xc,yc,zc)
@@ -685,9 +685,9 @@ if __name__ == "__main__":
 
         # Run for max density used in the simple geometry, which is 200 polymers in a 72 mum^2 area
         # calculate number of polymers needed to match that density 
-        config["simulation"]["N_POLYMERS"] = int(200/72 * 4 * np.pi * config["geometry"]["RADIUS_OBJECT"] ** 2)
+        # config["simulation"]["N_POLYMERS"] = int(200/72 * 4 * np.pi * config["geometry"]["RADIUS_OBJECT"] ** 2)
         # config["simulation"]["N_POLYMERS"] = int(10/72 * 4 * np.pi * config["geometry"]["RADIUS_OBJECT"] ** 2)
-        # config["simulation"]["N_POLYMERS"] = 200
+        config["simulation"]["N_POLYMERS"] = 200
 
         config["geometry"]["BOX_Lx"] = 100
         config["geometry"]["BOX_Ly"] = 50
@@ -699,7 +699,7 @@ if __name__ == "__main__":
         config["physical"]["k"] = 1000
         config["physical"]["N_MONOMERS"] = 50
 
-        config["simulation"]["TOTAL_TIME"] = 0.01
+        config["simulation"]["TOTAL_TIME"] = 0.005
 
         # config["simulation"]["TIME_STEP"] = 0.001
         # config["simulation"]["LB_TIME_STEP"] = 0.001
@@ -710,7 +710,7 @@ if __name__ == "__main__":
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config)
         add_polymer_positions(config)
-        config["geometry"]["SPHERE"] = False
+        # config["geometry"]["SPHERE"] = False
     
     if run_type == "experiment_sphere":
         shear = float(sys.argv[2])
