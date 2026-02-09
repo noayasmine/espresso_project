@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 # ks = [10, 100, 500, 1000, 5000, 10000]
 # Ns = [100]
 # folders_to_plot = []
@@ -19,23 +20,22 @@ import matplotlib.pyplot as plt
 # "/home/nroebersen/espresso_project/validation/forces/experiment_forces_N100/500/5455",
 # "/home/nroebersen/espresso_project/validation/forces/experiment_forces_N250/500/5455"
 # ]
-# folders_to_plot = [
-# "/home/nroebersen/espresso_project/validation/forces/experiment_forces_N50/500/11636",
-# "/home/nroebersen/espresso_project/validation/forces/experiment_forces_N50/500/5455"
+folders_to_plot = [
+"/home/nroebersen/espresso_project/validation/forces/experiment_forces_N50/500/11636",
+"/home/nroebersen/espresso_project/validation/forces/experiment_forces_N50/500/5455"
+]
 
-# ]
+# ks = [10, 100, 500, 1000, 5000, 10000]
+# Ns = [100, 250]
+# folders_to_plot = []
+# for N in Ns:
+#     for k in ks:
+#         folders_to_plot.append(f"/home/nroebersen/espresso_project/validation/forces/experiment_forces_N{N}/{k}/11636")
 
-ks = [10, 100, 500, 1000, 5000, 10000]
-Ns = [100, 250]
-folders_to_plot = []
-for N in Ns:
-    for k in ks:
-        folders_to_plot.append(f"/home/nroebersen/espresso_project/validation/forces/experiment_forces_N{N}/{k}/11636")
-
-particle_id = 50
-N_AVG = 100
-N_MOV = 20
-dpi = 300
+# particle_id = 50
+# N_AVG = 100
+# N_MOV = 20
+# dpi = 300
 
 tensile_filename = "tensile_forces.npz"
 drag_filename = "drag_forces.npz"
@@ -153,11 +153,11 @@ def plot_profiles(folder):
 
     plt.figure(figsize=(6, 4))
 
-    plt.plot(idx, tensile, label="tensile", color="C0")
-    plt.fill_between(idx, tensile - tens_stdev, tensile + tens_stdev, color="C0", alpha=0.25)
+    plt.plot(idx, tensile, label="tensile", color="cadetblue")
+    plt.fill_between(idx, tensile - tens_stdev, tensile + tens_stdev, color="cadetblue", alpha=0.25)
 
-    plt.plot(idx, drag_cum, label="cumulative drag", color="C1")
-    plt.fill_between(idx, drag_cum - drag_stdev_cum, drag_cum + drag_stdev_cum, color="C1", alpha=0.25)
+    plt.plot(idx, drag_cum, label="cumulative drag", color="purple")
+    plt.fill_between(idx, drag_cum - drag_stdev_cum, drag_cum + drag_stdev_cum, color="purple", alpha=0.25)
 
     # plt.plot(idx, total, label="total", color="C2")
     # plt.fill_between(idx, total - total_stdev, total + total_stdev, color="C2", alpha=0.25)
@@ -167,13 +167,13 @@ def plot_profiles(folder):
     ref = 0.5 * ref_steps[::-1]
     ref_std = 0.1 * ref_steps[::-1]
 
-    plt.plot(idx, ref, "--", color="grey", lw=1.2, label="0.5 ± 0.1 pN / monomer")
-    plt.fill_between(idx, ref - ref_std, ref + ref_std, color="grey", alpha=0.25)
+    #plt.plot(idx, ref, "--", color="grey", lw=1.2, label="0.5 ± 0.1 pN / monomer")
+    plt.fill_between(idx, ref - ref_std, ref + ref_std, color="grey", alpha=0.2)
 
     plt.xlim(0, tensile.shape[0])
     plt.ylim(0,)
-    plt.xlabel("Monomer index")
-    plt.ylabel("Force (pN)")
+    plt.xlabel("Monomer index",size=12)
+    plt.ylabel("Force [pN]",size=12)
     plt.legend()
     plt.tight_layout()
 
@@ -182,10 +182,14 @@ def plot_profiles(folder):
     plt.close()
     print("saved:", out)
 
-# for folder in folders_to_plot:
-#     plot_profiles(folder)
-#     plot_timeseries(folder)
+particle_id = 5
+N_AVG = 100
+N_MOV = 20
+dpi = 300
 
+for folder in folders_to_plot:
+    plot_profiles(folder)
+    plot_timeseries(folder)
 
 
 ks = [500, 1000, 5000, 10000]
@@ -292,4 +296,111 @@ def plot_tensile_profiles_onefig_per_N(Ns, ks, base_dir, run_id="11636", outdir=
         print("saved:", outname)
 
 
-plot_tensile_profiles_onefig_per_N(Ns, ks, base_dir, run_id="11636")
+# plot_tensile_profiles_onefig_per_N(Ns, ks, base_dir, run_id="11636")
+
+
+
+
+def plot_profiles_multi(folders, labels, outpath, N_AVG=100, N_MOV=20, dpi=300, show_ref=True):
+    """
+    Plot tensile + cumulative drag + total vs monomer index for multiple folders on ONE figure.
+
+    Encoding:
+      - color      → folder (model: kBT=18 vs NoLJ)
+      - linestyle  → force type
+          tensile         : dashed
+          cumulative drag : solid
+          total           : dotted
+    """
+    if len(folders) != len(labels):
+        raise ValueError("folders and labels must have same length")
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+
+    # fixed colors per folder
+    base_colors = ["purple", "cadetblue"]
+    if len(folders) > len(base_colors):
+        base_colors = (base_colors * ((len(folders) + 1) // len(base_colors)))[:len(folders)]
+
+    for folder, lab, col in zip(folders, labels, base_colors):
+        ft = os.path.join(folder, tensile_filename)
+        fd = os.path.join(folder, drag_filename)
+        ff = os.path.join(folder, total_filename)
+
+        if not (os.path.isfile(ft) and os.path.isfile(fd) and os.path.isfile(ff)):
+            print("missing one of:", folder)
+            continue
+
+        tensile_ts = read_timeseries_TN(ft, mov_window=N_MOV)
+        drag_ts = read_timeseries_TN(fd, mov_window=N_MOV)
+        total_ts = read_timeseries_TN(ff, mov_window=N_MOV)
+
+        tensile, tens_stdev = avg_last(tensile_ts, N_AVG)
+        drag, drag_stdev = avg_last(drag_ts, N_AVG)
+        total, total_stdev = avg_last(total_ts, N_AVG)
+
+        tensile, tens_stdev = tensile * 1000.0, tens_stdev * 1000.0
+        drag, drag_stdev = drag * 1000.0, drag_stdev * 1000.0
+        total, total_stdev = total * 1000.0, total_stdev * 1000.0
+
+        drag_cum = cumulative_from_last(drag)
+        drag_stdev_cum = cumulative_from_last(drag_stdev)
+
+        idx = np.arange(len(tensile))
+
+        # tensile — dashed
+        ax.plot(idx, tensile, color=col, lw=2.0, ls="-", label=f"tensile {lab}")
+        ax.fill_between(idx, tensile - tens_stdev, tensile + tens_stdev, color=col, alpha=0.18)
+
+        # # cumulative drag — solid
+        # ax.plot(idx, drag_cum, color=col, lw=2.0, ls="-", label=f"cumulative drag {lab}")
+        # ax.fill_between(idx, drag_cum - drag_stdev_cum, drag_cum + drag_stdev_cum, color=col, alpha=0.18)
+
+        # total — dotted
+        ax.plot(idx, total, color=col, lw=2.0, ls="--", label=f"total {lab}")
+        ax.fill_between(idx, total - total_stdev, total + total_stdev, color=col, alpha=0.14)
+
+    if show_ref:
+        Nref = None
+        for folder in folders:
+            ft = os.path.join(folder, tensile_filename)
+            if os.path.isfile(ft):
+                tmp = read_timeseries_TN(ft, mov_window=None)
+                Nref = tmp.shape[1]
+                break
+        if Nref is not None:
+            ref_steps = np.arange(1, Nref + 1)
+            ref = 0.5 * ref_steps[::-1]
+            ref_std = 0.1 * ref_steps[::-1]
+            idx_ref = np.arange(Nref)
+            ax.plot(idx_ref, ref, "--", color="grey", lw=1.2, label="0.5 ± 0.1 pN / monomer")
+            ax.fill_between(idx_ref, ref - ref_std, ref + ref_std, color="grey", alpha=0.20)
+
+    ax.set_xlim(0,50)
+    ax.set_ylim(bottom=0)
+    ax.set_xlabel("Monomer index",size=12)
+    ax.set_ylabel("Force [pN]",size=12)
+    ax.legend(fontsize=9, frameon=False)
+    fig.tight_layout()
+    fig.savefig(outpath, dpi=dpi, bbox_inches="tight")
+    plt.close(fig)
+    print("saved:", outpath)
+
+# ----------------------------
+# settings + run
+# ----------------------------
+N_AVG = 100
+N_MOV = 20
+dpi = 300
+
+folders = [
+    "/home/nroebersen/espresso_project/validation/forces/experiment_forces_N50/500/11636",
+    "/home/nroebersen/espresso_project/validation/forces/experiment_forces_N50_NoLJ/500/11636",
+]
+labels = [
+    r"$\epsilon_{LJ}=18$",
+    r"$\epsilon_{LJ}=0$",
+]
+
+outpath = "/home/nroebersen/espresso_project/validation/forces/forces_profile_compare_kBT18_vs_kBT0.png"
+plot_profiles_multi(folders, labels, outpath, N_AVG=N_AVG, N_MOV=N_MOV, dpi=dpi, show_ref=False)

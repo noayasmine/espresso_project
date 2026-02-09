@@ -565,7 +565,7 @@ if __name__ == "__main__":
         config["simulation"]["COMPUTE_POSITIONS"] = False
         config["simulation"]["N_POLYMERS"] = 1
         config["physical"]["k"] = k
-        config["physical"]["N_MONOMERS"] = 250
+        config["physical"]["N_MONOMERS"] = 50
 
         if config["physical"]["N_MONOMERS"] == 250:
             config["geometry"]["BOX_Lx"] = 20
@@ -576,7 +576,7 @@ if __name__ == "__main__":
         config["simulation"]["LB_TIME_STEP"] = 0.001
         config["simulation"]["TIME_STEP"] = 0.001
         add_timeloops_from_gridsize(config)
-        add_dependent_parameters(config)
+        add_dependent_parameters(config, LJ_strength=0)
         add_polymer_positions(config)
     
     if run_type == "experiment":

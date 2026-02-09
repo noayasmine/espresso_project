@@ -18,7 +18,7 @@ base_dir = f"/home/nroebersen/espresso_project/experiments/density_experiment/{s
 
 AREA = 72.0
 USE_DENSITY_X = True
-N_LAST = 20
+N_LAST = 100
 N_MOV = 20
 INCLUDE_NS = [10, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200]
 
