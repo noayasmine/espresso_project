@@ -1,3 +1,5 @@
+
+
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -18,7 +20,7 @@ base_dir = f"/home/nroebersen/espresso_project/experiments/density_experiment/{s
 
 AREA = 72.0
 USE_DENSITY_X = True
-N_LAST = 100
+N_LAST = 20
 N_MOV = 20
 INCLUDE_NS = [10, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200]
 
@@ -26,10 +28,11 @@ INCLUDE_NS = [10, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200]
 N_MONOMERS_PER_POLYMER = 50.0
 
 # for F>threshold plots
-THRESHOLD = 20.0  # pN
+# THRESHOLD = 20.0  # pN
+THRESHOLD = 27.5
 
-# choose which shear rates to include in the multi-shear subplot figure:
-SHEARS_TO_INCLUDE = [1454, 2091, 2727, 3636, 5455]  # edit freely
+# choose which shear rates to include (edit freely)
+SHEARS_TO_INCLUDE = [1454, 1818, 2727, 3636, 5455]  # 2x2 by default; add more and the code will still work (it will use first 4)
 
 # ----------------------------
 # shear → wall shear stress mapping (dyn/cm^2)
@@ -37,6 +40,7 @@ SHEARS_TO_INCLUDE = [1454, 2091, 2727, 3636, 5455]  # edit freely
 SHEAR_TO_STRESS = {
     1454: 160,
     2091: 230,
+    1818: 200,
     2727: 300,
     3636: 400,
     5455: 600,
@@ -231,13 +235,18 @@ for i, sh in enumerate(SHEARS_TO_INCLUDE):
     ax.plot(dens_loc, assoc_loc, lw=2.0, ms=5,
             marker=markers[i % len(markers)], ls=linestyles[i % len(linestyles)],
             color=TAB10[i % len(TAB10)], alpha=ALPHA,
-            label=rf"$\tau_w = {stress}\,\mathrm{{dyn\,cm^{{-2}}}}$")
+            label=rf"$\tau= {stress}\,\mathrm{{dyn\,cm^{{-2}}}}$")
 
 ax.set_xlabel(r"Polymer density [1/$\mu$m$^2$]")
 ax.set_ylabel("Fraction of self-associated monomers")
 ax.set_xlim(0, 3)
 ax.set_ylim(0, 1)
-ax.legend(frameon=False, fontsize=9,loc='upper left')
+ax.legend(
+    frameon=False,
+    fontsize=9,
+    loc="lower right",
+    bbox_to_anchor=(1.0, 0.15))
+
 style_axes(ax)
 
 fig.tight_layout()
@@ -245,9 +254,12 @@ fig.savefig(os.path.join("/home/nroebersen/espresso_project/experiments/density_
 plt.close(fig)
 
 # ======================================================================================
-# NEW: subplot figure (one panel per shear) of fraction of monomers with F>THRESHOLD,
-#      comparing selfassociation (purple) vs no selfassociation (cadetblue)
+# NEW: 2x2 subplot figure: monomer fraction with F > THRESHOLD pN vs density
+#      (purple=selfassociation, cadetblue=no selfassociation), one panel per shear
+#      NOTE: no shared y-axis; each panel uses its own ylim(0, ...)
 # ======================================================================================
+
+SHEARS_TO_INCLUDE = [1818, 2727, 3636, 5455]
 
 def trailing_moving_avg_axis0(arr_TN, window):
     arr = np.asarray(arr_TN, dtype=float)
@@ -258,9 +270,9 @@ def trailing_moving_avg_axis0(arr_TN, window):
         out[t] = np.nanmean(arr[s:t+1], axis=0)
     return out
 
-def collect_frac_above_threshold(base_dir_condition):
+def collect_frac_above_threshold(base_dir_condition, threshold=THRESHOLD):
     Ns_loc, dens_loc, frac_loc = [], [], []
-
+    THRESHOLD = threshold
     for name in sorted(os.listdir(base_dir_condition)):
         if not name.startswith("N_polymers_"):
             continue
@@ -274,9 +286,9 @@ def collect_frac_above_threshold(base_dir_condition):
         if not os.path.exists(tens_path):
             continue
 
-        tens = load_npz_first(tens_path).astype(float)       # (T, N_total), MD units
+        tens = load_npz_first(tens_path).astype(float)        # (T, N_total), MD units
         tens_pN = tens * 1000.0                               # pN
-        ma_monomer = trailing_moving_avg_axis0(tens_pN, N_MOV) # (T, N_total)
+        ma_monomer = trailing_moving_avg_axis0(tens_pN, N_MOV)
 
         last = min(N_LAST, ma_monomer.shape[0])
         ma_last = ma_monomer[-last:]
@@ -295,7 +307,7 @@ def collect_frac_above_threshold(base_dir_condition):
     order = np.argsort(Ns_loc)
     return np.array(dens_loc)[order], np.array(frac_loc)[order]
 
-# Make subplots: one per shear
+# keep only shears that exist for both conditions
 shears_ok = []
 for sh in SHEARS_TO_INCLUDE:
     bd_self  = f"/home/nroebersen/espresso_project/experiments/density_experiment/{sh}/selfassociation"
@@ -303,12 +315,19 @@ for sh in SHEARS_TO_INCLUDE:
     if os.path.isdir(bd_self) and os.path.isdir(bd_noself):
         shears_ok.append(sh)
 
-if len(shears_ok) > 0:
-    fig, axes = plt.subplots(len(shears_ok), 1, figsize=(5.2, 1.9 * len(shears_ok)), sharex=True)
-    if len(shears_ok) == 1:
-        axes = [axes]
+# 2x2 layout; if more than 4 are provided, we plot the first 4
+shears_ok = shears_ok[:4]
 
-    for ax, sh in zip(axes, shears_ok):
+if len(shears_ok) > 0:
+    fig, axes = plt.subplots(2, 2, figsize=(6, 4), sharex=True, sharey=False, dpi=300)
+    axes = axes.ravel()
+
+    for j, ax in enumerate(axes):
+        if j >= len(shears_ok):
+            ax.axis("off")
+            continue
+
+        sh = shears_ok[j]
         base_self  = f"/home/nroebersen/espresso_project/experiments/density_experiment/{sh}/selfassociation"
         base_noself = f"/home/nroebersen/espresso_project/experiments/density_experiment/{sh}/no_selfassociation"
 
@@ -323,20 +342,179 @@ if len(shears_ok) > 0:
             ax.plot(xB, yB, "s-", lw=2.0, ms=5, color=COL_CADET, alpha=ALPHA, label="no selfassociation")
 
         stress = SHEAR_TO_STRESS.get(sh, sh)
-        ax.set_ylabel(rf"$\tau_w={stress}$" + "\n" + r"(dyn cm$^{-2}$)")
+        stress = SHEAR_TO_STRESS.get(sh, sh)
+        if j == 0:
+            ax.text(0.96, 0.2, rf"$\tau = {stress}\,\mathrm{{dyn~cm^{{-2}}}}$",
+            transform=ax.transAxes, ha="right", va="bottom", fontsize=11)
+        else:
+            ax.text(0.96, 0.1, rf"$\tau = {stress}\,\mathrm{{dyn~cm^{{-2}}}}$",
+            transform=ax.transAxes, ha="right", va="bottom", fontsize=11)
+
+
         ax.set_xlim(0, 3)
-        ax.set_ylim(0,)
+        ax.set_ylim(0, None)  # <-- individual y-scale per panel
         style_axes(ax)
 
-    axes[-1].set_xlabel(r"Polymer density [1/$\mu$m$^2$]")
-    axes[0].legend(frameon=False)
+    fig.supxlabel(r"Polymer density [1/$\mu$m$^2$]")
+    fig.supylabel(fr"Monomer fraction with $F > {THRESHOLD}$ pN")
 
-    fig.tight_layout()
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, frameon=False, ncol=2, loc="upper center",
+               bbox_to_anchor=(0.5, 1.02), fontsize=12)
+
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
     fig.savefig(
         os.path.join(
             "/home/nroebersen/espresso_project/experiments/density_experiment",
-            f"frac_monomers_F_gt_{int(THRESHOLD)}pN_all_shears_subplots.png"
+            f"frac_monomers_F_gt_{int(THRESHOLD)}pN_all_shears_2x2.png"
         ),
         dpi=300
     )
     plt.close(fig)
+
+# ======================================================================================
+# NEW: stacked subplot figure: monomer fraction with F > THRESHOLD pN vs density
+#      one panel per shear (ALL available shears), independent y-axes
+# ======================================================================================
+
+if len(shears_ok) > 0:
+    fig, axes = plt.subplots(len(shears_ok), 1,
+                             figsize=(5.5/1.5, 1.8 * len(shears_ok)/1.5),
+                             sharex=True, sharey=False)
+
+    if len(shears_ok) == 1:
+        axes = [axes]
+
+    for ax, sh in zip(axes, shears_ok):
+        base_self  = f"/home/nroebersen/espresso_project/experiments/density_experiment/{sh}/selfassociation"
+        base_noself = f"/home/nroebersen/espresso_project/experiments/density_experiment/{sh}/no_selfassociation"
+
+        outA = collect_frac_above_threshold(base_self)
+        outB = collect_frac_above_threshold(base_noself)
+
+        if outA is not None:
+            xA, yA = outA
+            ax.plot(xA, yA, "o-", lw=2.0, ms=5,
+                    color=COL_PURPLE, alpha=ALPHA, label="selfassociation")
+
+        if outB is not None:
+            xB, yB = outB
+            ax.plot(xB, yB, "s-", lw=2.0, ms=5,
+                    color=COL_CADET, alpha=ALPHA, label="no selfassociation")
+
+        stress = SHEAR_TO_STRESS.get(sh, sh)
+        # ax.text(0.96, 0.06,
+        #         rf"$\tau = {stress}\,\mathrm{{dyn~cm^{{-2}}}}$",
+        #         transform=ax.transAxes,
+        #         ha="right", va="bottom", fontsize=11)
+
+        # ax.text(
+        # 0.04, 0.96,
+        # rf"$\tau = {stress}\,\mathrm{{dyn~cm^{{-2}}}}$",
+        # transform=ax.transAxes,
+        # ha="left", va="top",
+        # fontsize=11)
+        ax.text(
+            1.08, 0.5,
+            rf"$\tau = {stress}$" "\n" r"$\mathrm{dyn\,cm^{-2}}$",
+            transform=ax.transAxes,
+            rotation=90,
+            ha="center", va="center",
+            fontsize=11)
+
+
+        ax.set_xlim(0, 3)
+        ax.set_ylim(0, None)
+        style_axes(ax)
+
+    axes[-1].set_xlabel(r"Polymer density [1/$\mu$m$^2$]")
+    fig.supylabel(fr"Monomer fraction with $F > {int(THRESHOLD)}$ pN")
+
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, frameon=False, ncol=2,
+               loc="upper center", bbox_to_anchor=(0.5, 1.02), fontsize=11)
+
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    fig.savefig(
+        os.path.join(
+            "/home/nroebersen/espresso_project/experiments/density_experiment",
+            f"frac_monomers_F_gt_{int(THRESHOLD)}pN_all_shears_stacked.png"
+        ),
+        dpi=300
+    )
+    plt.close(fig)
+
+
+thresholds = [20, 27.5]
+
+if len(shears_ok) > 0:
+    nrows = len(shears_ok)
+    ncols = 2
+
+    fig, axes = plt.subplots(
+        nrows, ncols,
+        figsize=(2 * (5.5/1.5), 1.8 * nrows/1.5),
+        sharex=True, sharey=False
+    )
+    for i in range(nrows):
+        axes[i, 1].sharey(axes[i, 0])
+
+
+    if nrows == 1:
+        axes = np.array([axes])  # shape (1, 2)
+
+    for i, sh in enumerate(shears_ok):
+        base_self = f"/home/nroebersen/espresso_project/experiments/density_experiment/{sh}/selfassociation"
+        base_noself = f"/home/nroebersen/espresso_project/experiments/density_experiment/{sh}/no_selfassociation"
+
+        for j, thr in enumerate(thresholds):
+            ax = axes[i, j]
+
+            outA = collect_frac_above_threshold(base_self, threshold=thr)
+            outB = collect_frac_above_threshold(base_noself, threshold=thr)
+
+            if outA is not None:
+                xA, yA = outA
+                ax.plot(xA, yA, "o-", lw=2.0, ms=5, color=COL_PURPLE, alpha=ALPHA, label="selfassociation")
+
+            if outB is not None:
+                xB, yB = outB
+                ax.plot(xB, yB, "s-", lw=2.0, ms=5, color=COL_CADET, alpha=ALPHA, label="no selfassociation")
+
+            ax.set_xlim(0, 3)
+            ax.set_ylim(0, None)
+            style_axes(ax)
+
+            if i == 0:
+                ax.set_title(fr"$F > {thr}$ pN", fontsize=11)
+
+        # Stress label only once: on the RIGHT of the RIGHT column axes
+        axR = axes[i, 1]
+        stress = SHEAR_TO_STRESS.get(sh, sh)
+        axR.text(
+            1.08, 0.5,
+            rf"$\tau = {stress}$" "\n" r"$\mathrm{dyn\,cm^{-2}}$",
+            transform=axR.transAxes,
+            rotation=90,
+            ha="center", va="center",
+            fontsize=11
+        )
+
+    for j in range(ncols):
+        axes[-1, j].set_xlabel(r"Polymer density [1/$\mu$m$^2$]")
+
+    fig.supylabel(fr"Monomer fraction with $F > \mathrm{{threshold}}$")
+
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+    fig.legend(handles, labels, frameon=False, ncol=2, loc="upper center", bbox_to_anchor=(0.5, 1.02), fontsize=11)
+
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    fig.savefig(
+        os.path.join(
+            "/home/nroebersen/espresso_project/experiments/density_experiment",
+            "frac_monomers_F_gt_20_and_27p5pN_all_shears_2xN.png"
+        ),
+        dpi=300
+    )
+    plt.close(fig)
+

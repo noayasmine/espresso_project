@@ -443,7 +443,11 @@ def run_simulation(params):
     DIRECTORY = out["DIRECTORY"]
     geo_sphere = geom.get("SPHERE", False)
     geo_microcontraction = geom.get("MICROCONTRACTION", False)
-    radius_object = geom.get("RADIUS_OBJECT", 7.5)
+
+    radius_object = geom["RADIUS_OBJECT"]
+    xc = geom["SPHERE_CENTER_X"]
+    yc = geom["SPHERE_CENTER_Y"]
+    zc = geom["SPHERE_CENTER_Z"]
 
     VELOCITY = sim["VELOCITY"]
     outdir = DIRECTORY + f'vtk_data/'
@@ -500,8 +504,8 @@ def run_simulation(params):
         logging.info("Adding Sphere.")
         # add sphere as constraint 0.5 agrid from the wall
         # sphere_constraint = espressomd.shapes.Sphere(radius=(radius_object + AGRID), center=[25, 25, radius_object + 0.5*AGRID], direction=1)
-        print(f"Adding sphere constraint at center={25,25,radius_object + 0.5*AGRID} with R={radius_object}")
-        sphere_constraint = espressomd.shapes.Sphere(radius=radius_object, center=[25, 25, radius_object + 0.5 * AGRID], direction=1)
+        print(f"Adding sphere constraint at center={xc, yc, zc} with R={radius_object}")
+        sphere_constraint = espressomd.shapes.Sphere(radius=radius_object, center=[xc, yc, zc], direction=1)
         # particle type per polymer range from 0 to N_POLYMER-1, giving LB shapes "particle type" N_POLYMERS
         system.constraints.add(particle_type=N_POLYMERS, penetrable=False, shape=sphere_constraint)
 
@@ -582,9 +586,9 @@ def run_simulation(params):
     lb_boundary_down = system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=wall_shape_z_down_lb, velocity=[VELOCITY, 0, 0]))
     
     if geo_sphere:
-        # effecitvely placing the sphere at (25,25,8) with radius 7
+        # effecitvely placing the sphere at 
         # sphere = espressomd.shapes.Sphere(radius=radius_object + AGRID*0.5, center=[25, 25, radius_object + 0.5 * AGRID])
-        sphere = espressomd.shapes.Sphere(radius=radius_object, center=[25, 25, radius_object + 0.5 * AGRID])
+        sphere = espressomd.shapes.Sphere(radius=radius_object, center=[xc, yc, zc+0.5 * AGRID])
         system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=sphere, velocity=[0, 0, 0]))
 
     if N_POLYMERS > 0:

@@ -17,7 +17,7 @@
     "STEPS": 1000,
     "TOTAL_TIME":0.4,
     "N_POLYMERS": 2,
-    "N_POLYMERS_FREE": 0,
+    "N_POLYMERS_SPHERE": 0,
     "DISTRIBUTION":"UNIFORM",
     "TETHERED":true,
     "COILED":true,
@@ -40,7 +40,9 @@
     "CYLINDER": false,
     "MICROCONTRACTION": false,
     "SPHERE": false,
-    "RADIUS_OBJECT": 7,
+    "RADIUS_OBJECT":2,
+    "SPHERE_CENTER_X":5,
+    "SPHERE_CENTER_Y":6,
     "AGRID": 1
   },
   "fluid": {

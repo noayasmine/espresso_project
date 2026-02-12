@@ -19,19 +19,28 @@ def add_dependent_parameters(config, LJ_strength=18):
     config["simulation"]["SHEAR"] = (4/3) * config["simulation"]["SHEAR"]
     config["simulation"]["VELOCITY"] = config["simulation"]["SHEAR"] * 1e-4 * (config["geometry"]["BOX_Lz"] - config["geometry"]["AGRID"])
 
-def sample_points_min_dist_2d(n_points, bounds, min_dist, max_attempts=100000):
+def sample_points_min_dist_2d(n_points, bounds, min_dist, offset, max_attempts=100000, xc=None, yc=None, r_excl=2.2):
     """
     Sample n_points in 2D within given bounds, with pairwise distance >= min_dist.
+    Optionally exclude points within radius r_excl around (xc, yc).
+
     bounds = ((x_min, x_max), (y_min, y_max))
     """
     (x_min, x_max), (y_min, y_max) = bounds
     pts = []
     attempts = 0
 
+    use_exclusion = (xc is not None) and (yc is not None)
+
     while len(pts) < n_points and attempts < max_attempts:
         attempts += 1
         x = np.random.uniform(x_min, x_max)
         y = np.random.uniform(y_min, y_max)
+
+        # optional exclusion disk
+        if use_exclusion and ((x - xc)**2 + (y - yc)**2 <= r_excl**1.5):
+            continue
+
         p = np.array([x, y])
 
         # accept if far enough from all existing points
@@ -39,10 +48,14 @@ def sample_points_min_dist_2d(n_points, bounds, min_dist, max_attempts=100000):
             pts.append(p)
 
     if len(pts) < n_points:
-        raise RuntimeError("Could not place all points with the given min_dist.")
+        raise RuntimeError("Could not place all points with the given min_dist / exclusion region.")
 
     pts = np.array(pts)
-    return pts[:, 0], pts[:, 1]
+    random_x, random_y = pts[:, 0], pts[:, 1]
+    z = np.full(n_points, offset)
+    start_positions = np.stack([random_x, random_y, z], axis=1)
+
+    return start_positions
 
 def sample_sphere_filtered_min_dist(npoints, xc, yc, zc, R, min_dist, max_attempts=1000000):
     
@@ -100,6 +113,7 @@ def compute_start_positions(config):
     """
     np.random.seed(config["simulation"]["SEED"])
     N_POLYMERS = config["simulation"]["N_POLYMERS"]
+    N_POLYMERS_SPHERE = config["simulation"]["N_POLYMERS_SPHERE"]
 
     a = config["physical"]["a"]
     AGRID = config["geometry"]["AGRID"]
@@ -109,7 +123,7 @@ def compute_start_positions(config):
     min_dist = 15.0 * a
 
     offset = 0.5 * AGRID + a + 1e-07
-    offset_sphere = a + 1e-07
+    offset_sphere = 2*a + 1e-07
 
     if N_POLYMERS == 1:
         random_x = np.array([BOX_Lx / 5])
@@ -128,22 +142,29 @@ def compute_start_positions(config):
     
     elif config["geometry"]["SPHERE"]:
         R = config["geometry"].get("RADIUS_OBJECT")
-        xc = config["geometry"].get("SPHERE_CENTER_X", 25.0)
-        yc = config["geometry"].get("SPHERE_CENTER_Y", 25.0)
-        zc = config["geometry"].get("SPHERE_CENTER_Z",config["geometry"].get("RADIUS_OBJECT", 7))
-        R = config["geometry"].get("RADIUS_OBJECT") + offset_sphere
-        zc += 0.5 * AGRID
-        print(R, xc, yc, zc)
-        start_positions = sample_sphere_filtered_min_dist(N_POLYMERS, xc, yc, zc, R=R, min_dist=min_dist, max_attempts=100000)
+        xc = config["geometry"].get("SPHERE_CENTER_X")
+        yc = config["geometry"].get("SPHERE_CENTER_Y")
+        zc = config["geometry"].get("RADIUS_OBJECT") + 0.5 * AGRID
+        config["geometry"]["SPHERE_CENTER_Z"] = zc
+
+        radius_particle_sampling = config["geometry"].get("RADIUS_OBJECT") + offset_sphere
+
+        print(R, radius_particle_sampling, xc, yc, zc)
+        start_positions_sphere = sample_sphere_filtered_min_dist(N_POLYMERS_SPHERE, xc, yc, zc, R=radius_particle_sampling, min_dist=min_dist, max_attempts=100000)
+
+        if N_POLYMERS > N_POLYMERS_SPHERE:
+            x_bounds = (AGRID, BOX_Lx - (7 * AGRID))
+            y_bounds = (2.5 * AGRID, BOX_Ly - (2.5 * AGRID))
+            N_POLYMERS_GROUND = N_POLYMERS-N_POLYMERS_SPHERE
+            start_positions_ground = sample_points_min_dist_2d(N_POLYMERS_GROUND, (x_bounds, y_bounds), min_dist, offset, xc=xc, yc=yc)
+
+        start_positions = np.vstack([start_positions_sphere, start_positions_ground])
 
     else:
         x_bounds = (AGRID + 2.0 * a, BOX_Lx - (AGRID + 2.0 * a))
         y_bounds = (AGRID + 2.0 * a, BOX_Ly - (AGRID + 2.0 * a))
 
-        random_x, random_y = sample_points_min_dist_2d(N_POLYMERS, (x_bounds, y_bounds), min_dist)
-
-        z = np.full(N_POLYMERS, offset)
-        start_positions = np.stack([random_x, random_y, z], axis=1)
+        start_positions = sample_points_min_dist_2d(N_POLYMERS, (x_bounds, y_bounds), min_dist, offset)
 
     config["simulation"]["START_POSITIONS"] = start_positions
     print("Positions first monomers:")
@@ -242,7 +263,6 @@ def check_polymer_geometry(positions, a, max_consecutive=1.25, min_pairwise=0.85
     if bad and raise_on_fail:
         raise ValueError("Polymer geometry check failed: order/bond lengths or intra-polymer overlaps detected.")
 
-
 def load_polymer_positions(start_positions, config, pos_dir=None):
     """
     Places pre-defined polymer conformations at start_positions.
@@ -255,10 +275,8 @@ def load_polymer_positions(start_positions, config, pos_dir=None):
     k = int(config["physical"]["k"])
     AGRID = config["geometry"]["AGRID"]
     a = config["physical"]["a"]
+    N_POLYMERS_SPHERE = config["simulation"]["N_POLYMERS_SPHERE"]
 
-    #if run_type == "validation_uncoiling":
-    #path_to_file = f"./configs/init_polymer_positions_multiple_runs_N{N_MONOMERS}/run_{seed}/init_positions.npz"
-    # else:
     pos_dir = f"./configs/initial_polymer_positions_k_1000"
     path_to_file = os.path.join(pos_dir, f"init_positions_{N_MONOMERS}_seed_{seed}.npz")
 
@@ -275,11 +293,10 @@ def load_polymer_positions(start_positions, config, pos_dir=None):
 
     # sphere geometry
     sphere = config["geometry"]["SPHERE"]
-    xc = config["geometry"].get("SPHERE_CENTER_X", 25.0)
-    yc = config["geometry"].get("SPHERE_CENTER_Y", 25.0)
-    zc = config["geometry"].get("SPHERE_CENTER_Z",config["geometry"].get("RADIUS_OBJECT", 0.0))
-    zc += 0.5 * config["geometry"]["AGRID"]
-    offset_sphere = a + 1e-07
+    xc = config["geometry"].get("SPHERE_CENTER_X")
+    yc = config["geometry"].get("SPHERE_CENTER_Y")
+    zc = config["geometry"].get("SPHERE_CENTER_Z")
+    offset_sphere = 2*a + 1e-07
     R = float(config["geometry"]["RADIUS_OBJECT"]) + offset_sphere
     
     print(xc,yc,zc)
@@ -292,7 +309,7 @@ def load_polymer_positions(start_positions, config, pos_dir=None):
 
         polymer = base.copy()
 
-        if sphere:
+        if sphere and i < N_POLYMERS_SPHERE:
             n = _unit(pos0 - center)                 # outward normal at pos0
             R = rotation_matrix_from_vectors(ez, n)  # rotate +z -> n
             polymer = (R @ polymer.T).T              # apply to all monomers
@@ -352,8 +369,10 @@ def add_polymer_positions(config):
         
         config["simulation"]["POSITIONS"] = positions
 
-    if COILED and not COMPUTE_POSITIONS:
+    elif COILED and not COMPUTE_POSITIONS:
         load_polymer_positions(start_positions, config)
+    
+    
 
 def add_timeloops_from_gridsize(config):
     """ Calculate number of loops for specified number of 
@@ -687,11 +706,17 @@ if __name__ == "__main__":
         # calculate number of polymers needed to match that density 
         # config["simulation"]["N_POLYMERS"] = int(200/72 * 4 * np.pi * config["geometry"]["RADIUS_OBJECT"] ** 2)
         # config["simulation"]["N_POLYMERS"] = int(10/72 * 4 * np.pi * config["geometry"]["RADIUS_OBJECT"] ** 2)
-        config["simulation"]["N_POLYMERS"] = 200
+        # config["simulation"]["N_POLYMERS_SPHERE"] = 280
+        # config["simulation"]["N_POLYMERS"] = int(280 + 750)
+        # config["simulation"]["N_POLYMERS_SPHERE"] = 185
+        # config["simulation"]["N_POLYMERS"] = int(185 + 450)
 
-        config["geometry"]["BOX_Lx"] = 100
-        config["geometry"]["BOX_Ly"] = 50
-        config["geometry"]["BOX_Lz"] = 30
+        config["simulation"]["N_POLYMERS_SPHERE"] = 70
+        config["simulation"]["N_POLYMERS"] = int(274 + 70)
+
+        config["geometry"]["BOX_Lx"] = 32
+        config["geometry"]["BOX_Ly"] = 12
+        config["geometry"]["BOX_Lz"] = 12
 
         config["geometry"]["SPHERE"] = True
         # config["simulation"]["MINIMIZATION_STEPS"] = 200
@@ -705,12 +730,13 @@ if __name__ == "__main__":
         # config["simulation"]["LB_TIME_STEP"] = 0.001
 
         config["simulation"]["TIME_STEP"] = 0.0005
-        config["simulation"]["LB_TIME_STEP"] = 0.0005
+        config["simulation"]["LB_TIME_STEP"] = config["simulation"]["TIME_STEP"]
 
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config)
         add_polymer_positions(config)
-        # config["geometry"]["SPHERE"] = False
+        #config["geometry"]["SPHERE"] = False
+        #config["simulation"]["N_POLYMERS"] = 0
     
     if run_type == "experiment_sphere":
         shear = float(sys.argv[2])
@@ -720,28 +746,35 @@ if __name__ == "__main__":
         print("Run simulation with sphere")
 
         if config["simulation"]["SELF_ASSOCIATE"]:
-            config["output"]["DIRECTORY"] = f"./{save_dir}/selfassociation/"
+            config["output"]["DIRECTORY"] = f"./{save_dir}/{int(shear)}/selfassociation/"
 
         else:
-            config["output"]["DIRECTORY"] = f"./{save_dir}/no_selfassociation/"
-    
+            config["output"]["DIRECTORY"] = f"./{save_dir}/{int(shear)}/no_selfassociation/"
+
+        # config["simulation"]["N_POLYMERS_SPHERE"] = 163
+        # config["simulation"]["N_POLYMERS"] = int(163 + 360)
+        config["simulation"]["N_POLYMERS_SPHERE"] = 70
+        config["simulation"]["N_POLYMERS"] = int(274 + 70)
+
         config["simulation"]["SAVE_VTK"] = True
         config["simulation"]["SHEAR"] = shear
-        config["simulation"]["TOTAL_TIME"] = 0.02
+
+        config["simulation"]["TOTAL_TIME"] = 0.12
         config["simulation"]["COMPUTE_POSITIONS"] = False
         config["simulation"]["SEED"] = 1
 
-        config["simulation"]["N_POLYMERS"] = 3
-        config["geometry"]["BOX_Lx"] = 100
-        config["geometry"]["BOX_Ly"] = 50
-        config["geometry"]["BOX_Lz"] = 30
+        config["geometry"]["BOX_Lx"] = 32
+        config["geometry"]["BOX_Ly"] = 12
+        config["geometry"]["BOX_Lz"] = 12
+
         config["geometry"]["AGRID"] = 1
         config["geometry"]["SPHERE"] = True
         config["physical"]["k"] = 1000
         config["physical"]["N_MONOMERS"] = 50
 
-        config["simulation"]["LB_TIME_STEP"] = 0.001
-        config["simulation"]["TIME_STEP"] = 0.001
+        config["simulation"]["TIME_STEP"] = 0.0005/2
+        config["simulation"]["LB_TIME_STEP"] = config["simulation"]["TIME_STEP"]
+        config["simulation"]["STEPS"] = int(1000*4)
         
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config)
