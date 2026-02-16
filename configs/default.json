@@ -31,7 +31,8 @@
     "MINIMIZATION_TIME":0.05,
     "POSITIONS":[],
     "COMPUTE_POSITIONS":true,
-    "SELF_ASSOCIATE":false
+    "SELF_ASSOCIATE":false,
+    "POLYMER_DENSITY": 2.7
   },
   "geometry": {
     "BOX_Lx": 14,

@@ -19,7 +19,7 @@ def add_dependent_parameters(config, LJ_strength=18):
     config["simulation"]["SHEAR"] = (4/3) * config["simulation"]["SHEAR"]
     config["simulation"]["VELOCITY"] = config["simulation"]["SHEAR"] * 1e-4 * (config["geometry"]["BOX_Lz"] - config["geometry"]["AGRID"])
 
-def sample_points_min_dist_2d(n_points, bounds, min_dist, offset, max_attempts=100000, xc=None, yc=None, r_excl=2.2):
+def sample_points_min_dist_2d(n_points, bounds, min_dist, offset, max_attempts=100000, xc=None, yc=None, r_excl=1.8):
     """
     Sample n_points in 2D within given bounds, with pairwise distance >= min_dist.
     Optionally exclude points within radius r_excl around (xc, yc).
@@ -38,7 +38,7 @@ def sample_points_min_dist_2d(n_points, bounds, min_dist, offset, max_attempts=1
         y = np.random.uniform(y_min, y_max)
 
         # optional exclusion disk
-        if use_exclusion and ((x - xc)**2 + (y - yc)**2 <= r_excl**1.5):
+        if use_exclusion and ((x - xc)**2 + (y - yc)**2 <= r_excl**2):
             continue
 
         p = np.array([x, y])
@@ -57,7 +57,7 @@ def sample_points_min_dist_2d(n_points, bounds, min_dist, offset, max_attempts=1
 
     return start_positions
 
-def sample_sphere_filtered_min_dist(npoints, xc, yc, zc, R, min_dist, max_attempts=1000000):
+def sample_sphere_filtered_min_dist(npoints, xc, yc, zc, R, min_dist, min_z_val_sphere, max_attempts=1000000):
     
     xs, ys, zs = [], [], []
     attempts = 0
@@ -76,7 +76,7 @@ def sample_sphere_filtered_min_dist(npoints, xc, yc, zc, R, min_dist, max_attemp
         # r2 = (x - xc)**2 + (y - yc)**2
         # if (z < zc) and (r2 <= 1):
         #     continue
-        if (z < 1.1):
+        if (z < min_z_val_sphere):
             continue
 
         # min-distance check (3D)
@@ -113,25 +113,28 @@ def compute_start_positions(config):
     """
     np.random.seed(config["simulation"]["SEED"])
     N_POLYMERS = config["simulation"]["N_POLYMERS"]
-    N_POLYMERS_SPHERE = config["simulation"]["N_POLYMERS_SPHERE"]
+    N_MONOMERS = config["physical"]["N_MONOMERS"]
 
     a = config["physical"]["a"]
     AGRID = config["geometry"]["AGRID"]
     BOX_Lx = config["geometry"]["BOX_Lx"]
     BOX_Ly = config["geometry"]["BOX_Ly"]
     BOX_Lz = config["geometry"]["BOX_Lz"]
-    min_dist = 15.0 * a
+    if N_MONOMERS == 50:
+        min_dist = 15.0 * a
+    if N_MONOMERS == 100:
+        min_dist = 16.0 * a
 
     offset = 0.5 * AGRID + a + 1e-07
     offset_sphere = 2*a + 1e-07
 
-    if N_POLYMERS == 1:
+    if N_POLYMERS == 1 and not config["geometry"]["SPHERE"]:
         random_x = np.array([BOX_Lx / 5])
         random_y = np.array([BOX_Ly / 2])
         z = np.full(N_POLYMERS, offset)
         start_positions = np.stack([random_x, random_y, z], axis=1)
 
-    elif N_POLYMERS == 2:
+    elif N_POLYMERS == 2 and not config["geometry"]["SPHERE"]:
         spacing = 6 * a
         center_x = BOX_Lx / 4
         center_y = BOX_Ly / 2
@@ -146,17 +149,39 @@ def compute_start_positions(config):
         yc = config["geometry"].get("SPHERE_CENTER_Y")
         zc = config["geometry"].get("RADIUS_OBJECT") + 0.5 * AGRID
         config["geometry"]["SPHERE_CENTER_Z"] = zc
+        density = config["simulation"]["POLYMER_DENSITY"]
+        # setting minimal value of z=1.1 for tethered polymers on the sphere to satisfy wall overlapping monomers constraints
+        min_z_val_sphere = 1.1 
+        # excluding area with radius r_excl around sphere center for polymers on ground 
+        # to satisfy wall overlapping monomers constraints
+        r_excl = 1.8 
+
+        x_bounds = (xc - 3.5 * AGRID, xc + 3.5 * AGRID)
+        y_bounds = (yc - 3.5 * AGRID, yc + 3.5 * AGRID)
 
         radius_particle_sampling = config["geometry"].get("RADIUS_OBJECT") + offset_sphere
 
+        cut_distance = min_z_val_sphere - 0.5 * AGRID
+        sphere_area = 4 * np.pi * radius_particle_sampling ** 2 - (2 * np.pi * radius_particle_sampling * (radius_particle_sampling - cut_distance))
+        ground_area = (x_bounds[1] - x_bounds[0]) * (y_bounds[1] - y_bounds[0]) - np.pi * r_excl ** 2
+        
+        N_POLYMERS_SPHERE = int(sphere_area * density)
+        N_POLYMERS_GROUND = int(ground_area * density)
+        N_POLYMERS = N_POLYMERS_SPHERE + N_POLYMERS_GROUND
+        config["simulation"]["N_POLYMERS_SPHERE"] = N_POLYMERS_SPHERE
+        config["simulation"]["N_POLYMERS"] = N_POLYMERS
+
+        print("sphere radius, particle sphere radius, xc,yc,zc")
         print(R, radius_particle_sampling, xc, yc, zc)
-        start_positions_sphere = sample_sphere_filtered_min_dist(N_POLYMERS_SPHERE, xc, yc, zc, R=radius_particle_sampling, min_dist=min_dist, max_attempts=100000)
+        print("N_POLYMERS_SPHERE, N_POLYMERS_GROUND, N_POLYMERS")
+        print(N_POLYMERS_SPHERE, N_POLYMERS_GROUND, N_POLYMERS)
+        print("DENSITY")
+        print(density)
+
+        start_positions_sphere = sample_sphere_filtered_min_dist(N_POLYMERS_SPHERE, xc, yc, zc, R=radius_particle_sampling, min_dist=min_dist, min_z_val_sphere=min_z_val_sphere, max_attempts=100000)
 
         if N_POLYMERS > N_POLYMERS_SPHERE:
-            x_bounds = (AGRID, BOX_Lx - (7 * AGRID))
-            y_bounds = (2.5 * AGRID, BOX_Ly - (2.5 * AGRID))
-            N_POLYMERS_GROUND = N_POLYMERS-N_POLYMERS_SPHERE
-            start_positions_ground = sample_points_min_dist_2d(N_POLYMERS_GROUND, (x_bounds, y_bounds), min_dist, offset, xc=xc, yc=yc)
+            start_positions_ground = sample_points_min_dist_2d(N_POLYMERS_GROUND, (x_bounds, y_bounds), min_dist, offset, xc=xc, yc=yc, r_excl=r_excl)
 
         start_positions = np.vstack([start_positions_sphere, start_positions_ground])
 
@@ -277,8 +302,12 @@ def load_polymer_positions(start_positions, config, pos_dir=None):
     a = config["physical"]["a"]
     N_POLYMERS_SPHERE = config["simulation"]["N_POLYMERS_SPHERE"]
 
-    pos_dir = f"./configs/initial_polymer_positions_k_1000"
-    path_to_file = os.path.join(pos_dir, f"init_positions_{N_MONOMERS}_seed_{seed}.npz")
+    if N_MONOMERS==50:
+        pos_dir = f"./configs/initial_polymer_positions_k_1000"
+        path_to_file = os.path.join(pos_dir, f"init_positions_{N_MONOMERS}_seed_{seed}.npz")
+    if N_MONOMERS==100:
+        pos_dir = f"./configs/init_polymer_positions_multiple_runs_N100/run_{seed}"
+        path_to_file = os.path.join(pos_dir, f"init_positions.npz")
 
     print(f"Read out position file: {path_to_file}")
     data = np.load(path_to_file)
@@ -371,7 +400,6 @@ def add_polymer_positions(config):
 
     elif COILED and not COMPUTE_POSITIONS:
         load_polymer_positions(start_positions, config)
-    
     
 
 def add_timeloops_from_gridsize(config):
@@ -751,10 +779,7 @@ if __name__ == "__main__":
         else:
             config["output"]["DIRECTORY"] = f"./{save_dir}/{int(shear)}/no_selfassociation/"
 
-        # config["simulation"]["N_POLYMERS_SPHERE"] = 163
-        # config["simulation"]["N_POLYMERS"] = int(163 + 360)
-        config["simulation"]["N_POLYMERS_SPHERE"] = 70
-        config["simulation"]["N_POLYMERS"] = int(274 + 70)
+        config["simulation"]["POLYMER_DENSITY"] = 1.8
 
         config["simulation"]["SAVE_VTK"] = True
         config["simulation"]["SHEAR"] = shear
@@ -770,9 +795,9 @@ if __name__ == "__main__":
         config["geometry"]["AGRID"] = 1
         config["geometry"]["SPHERE"] = True
         config["physical"]["k"] = 1000
-        config["physical"]["N_MONOMERS"] = 50
+        config["physical"]["N_MONOMERS"] = 100
 
-        config["simulation"]["TIME_STEP"] = 0.0005/2
+        config["simulation"]["TIME_STEP"] = 0.001/4
         config["simulation"]["LB_TIME_STEP"] = config["simulation"]["TIME_STEP"]
         config["simulation"]["STEPS"] = int(1000*4)
         
