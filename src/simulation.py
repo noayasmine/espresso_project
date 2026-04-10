@@ -513,14 +513,13 @@ def run_simulation(params):
         # only add constraint for micro contraction here, later for LB too
         logging.info("Adding Microcontraction.")
         # add sphere as constraint 0.5 agrid from the wall
-        microcontraction_constraint = espressomd.shapes.Rhomboid(corner=np.array([AGRID * 0.5, AGRID * 0.5, AGRID * 0.5]), a=np.array([20.0, 0.0, 0.0]),
-            b=np.array([0.0, 130.0, 0.0]), c=np.array([40.0, 0.0, 80.0]), direction=1)
+        microcontraction_constraint_left = espressomd.shapes.Rhomboid(corner=np.array([2.5, 0, 0]), a=np.array([2, 0, 0]),
+            b=np.array([0, 8, 0]), c=np.array([2, 0, 4.]), direction=1)
+        microcontraction_constraint_right = espressomd.shapes.Rhomboid(corner=np.array([8.5, 0, 0]), a=np.array([2, 0, 0]),
+            b=np.array([0, 8, 0]), c=np.array([-2, 0, 4.]), direction=1)
         # particle type per polymer range from 0 to N_POLYMER-1, giving LB shapes "particle type" N_POLYMERS
-        system.constraints.add(particle_type=N_POLYMERS, penetrable=False, shape=microcontraction_constraint)
-        
-        # microcontraction = espressomd.shapes.Rhomboid(corner=np.array([AGRID * 0.5, AGRID * 0.5, AGRID * 0.5]), a=np.array([20.0, 0.0, 0.0]),
-        #     b=np.array([0.0, 130.0, 0.0]), c=np.array([40.0, 0.0, 80.0]), direction=1)
-        # system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=microcontraction, velocity=[0, 0, 0]))
+        system.constraints.add(particle_type=N_POLYMERS, penetrable=False, shape=microcontraction_constraint_left)
+        system.constraints.add(particle_type=N_POLYMERS, penetrable=False, shape=microcontraction_constraint_right)
 
     # Polymers
     if N_POLYMERS > 0:
@@ -590,6 +589,18 @@ def run_simulation(params):
         # sphere = espressomd.shapes.Sphere(radius=radius_object + AGRID*0.5, center=[25, 25, radius_object + 0.5 * AGRID])
         sphere = espressomd.shapes.Sphere(radius=radius_object, center=[xc, yc, zc+0.5 * AGRID])
         system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=sphere, velocity=[0, 0, 0]))
+    
+    if geo_microcontraction:
+        # placing LB smicrocontraction
+        logging.info("Adding Microcontraction.")
+        # add sphere as constraint 0.5 agrid from the wall
+        microcontraction_left = espressomd.shapes.Rhomboid(corner=np.array([2.5, 0, 0]), a=np.array([2.25, 0, 0]),
+            b=np.array([-0.5, 8.5, 0]), c=np.array([2.5, 0, 4.5]), direction=1)
+        microcontraction_right = espressomd.shapes.Rhomboid(corner=np.array([8.5, 0, 0]), a=np.array([2.25, 0, 0]),
+            b=np.array([-0.5, 8.5, 0]), c=np.array([-2.5, 0, 4.5]), direction=1)
+        # particle type per polymer range from 0 to N_POLYMER-1, giving LB shapes "particle type" N_POLYMERS
+        system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=microcontraction_left, velocity=[0, 0, 0]))
+        system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=microcontraction_right, velocity=[0, 0, 0]))
 
     if N_POLYMERS > 0:
         # drag forces per monomer

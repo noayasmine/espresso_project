@@ -18,7 +18,7 @@ def save_results(config, lbf, accumulator_forces, drag_forces, tensile_forces, t
     np.savez_compressed(os.path.join(outdir, "drag_forces.npz"), forces=drag_forces)
     np.savez_compressed(os.path.join(outdir, "forces.npz"), forces=accumulator_forces.time_series())
     np.savez_compressed(os.path.join(outdir, "tensile_forces.npz"), forces=tensile_forces)
-    np.savez_compressed(os.path.join(outdir, "tensile_forces_vec.npz"), forces=tensile_vec_forces)
+    # np.savez_compressed(os.path.join(outdir, "tensile_forces_vec.npz"), forces=tensile_vec_forces)
     np.savez_compressed(os.path.join(outdir, "added_bonds.npz"), bonds=added_bonds_per_step)
 
     # Compute velocity profile
@@ -33,7 +33,7 @@ def save_results(config, lbf, accumulator_forces, drag_forces, tensile_forces, t
     vx_only = velocities_reshaped[..., 0]
     z_avg_vx = vx_only.mean(axis=(0, 1))
 
-    np.savez_compressed(os.path.join(outdir, "velocity_profile.npz"), z_avg_vx=z_avg_vx)
+    # np.savez_compressed(os.path.join(outdir, "velocity_profile.npz"), z_avg_vx=z_avg_vx)
 
     # ----------------------------
     # new: one x–z plane at y = 4 (same style)
@@ -53,8 +53,8 @@ def save_results(config, lbf, accumulator_forces, drag_forces, tensile_forces, t
     vel_plane_reshaped = vel_plane.reshape(len(x_fine), len(z_fine), 3)  # (Nx, Nz, 3)
     vx_plane = vel_plane_reshaped[..., 0]                                # (Nx, Nz)
 
-    np.savez_compressed(os.path.join(outdir, "velocity_plane_y4_step0p01.npz"),
-            vx_plane=vx_plane)
+    # np.savez_compressed(os.path.join(outdir, "velocity_plane_y4_step0p01.npz"),
+    #         vx_plane=vx_plane)
 
     # save vti for visualization in paraview
     if save_VTK:

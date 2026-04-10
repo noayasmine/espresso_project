@@ -72,10 +72,6 @@ def sample_sphere_filtered_min_dist(npoints, xc, yc, zc, R, min_dist, min_z_val_
         y = yc + R * v[1]
         z = zc + R * v[2]
 
-        # reject bottom points inside circle
-        # r2 = (x - xc)**2 + (y - yc)**2
-        # if (z < zc) and (r2 <= 1):
-        #     continue
         if (z < min_z_val_sphere):
             continue
 
@@ -103,6 +99,86 @@ def sample_sphere_filtered_min_dist(npoints, xc, yc, zc, R, min_dist, min_z_val_
     start_positions = np.stack([x, y, z], axis=1)
     return start_positions
 
+
+def sample_plane_with_xy_bounds_min_dist(n_points, p0, v1, v2, x_bounds, y_bounds, min_dist, normal_offset=0.0, uv_patch=((0.0, 1.0), (0.0, 1.0)), max_attempts=500000, xc=None, yc=None, r_excl=None):
+    """
+    Sample n_points on the plane p(u,v)=p0+u*v1+v*v2, but ONLY keep points whose (x,y)
+    are inside x_bounds and y_bounds (world-space). Bounds are separate from plane definition.
+
+    Additionally offsets each accepted point by `normal_offset` along the plane unit normal.
+
+    Steps:
+      - sample (x,y) uniformly in the given bounds
+      - solve for (u,v) from the 2x2 system using the XY components of v1,v2
+      - compute point p on plane from u,v
+      - optionally require (u,v) inside uv_patch (default: [0,1]x[0,1])
+      - offset by normal: p <- p + normal_offset * n_hat
+      - enforce 3D min_dist on the OFFSET points
+      - optional exclusion disk in world (x,y)
+    """
+    p0 = np.asarray(p0, float); v1 = np.asarray(v1, float); v2 = np.asarray(v2, float)
+    (x_min, x_max) = x_bounds
+    (y_min, y_max) = y_bounds
+    (u_min, u_max), (v_min, v_max) = uv_patch
+
+    # plane unit normal
+    n = np.cross(v1, v2)
+    n_norm = np.linalg.norm(n)
+    if n_norm < 1e-14:
+        raise ValueError("v1 and v2 are collinear; plane normal is undefined.")
+    n_hat = n / n_norm
+    n_hat = -n_hat
+    print(n_hat)
+
+    # Build 2x2 map from (u,v) -> (x,y):  [x;y] = [p0x;p0y] + u*[v1x;v1y] + v*[v2x;v2y]
+    A = np.array([[v1[0], v2[0]],
+                  [v1[1], v2[1]]], dtype=float)
+
+    det = np.linalg.det(A)
+    if abs(det) < 1e-14:
+        raise ValueError("Cannot solve (u,v) from (x,y): the plane's XY projection is singular (det ~ 0).")
+
+    Ainv = np.linalg.inv(A)
+
+    use_excl = (xc is not None) and (yc is not None) and (r_excl is not None)
+
+    pts = []
+    attempts = 0
+    while len(pts) < n_points and attempts < max_attempts:
+        attempts += 1
+
+        x = np.random.uniform(x_min, x_max)
+        y = np.random.uniform(y_min, y_max)
+
+        # optional exclusion disk in world (x,y)
+        if use_excl and ((x - xc)**2 + (y - yc)**2 <= r_excl**2):
+            continue
+
+        rhs = np.array([x - p0[0], y - p0[1]], dtype=float)
+        u, v = Ainv @ rhs
+
+        # keep only if within desired patch on the plane
+        if not (u_min <= u <= u_max and v_min <= v <= v_max):
+            continue
+
+        # point on plane, then offset along normal
+        p = p0 + u * v1 + v * v2
+        p = p + normal_offset * n_hat
+
+        # 3D min-dist check (on the OFFSET points)
+        ok = True
+        for q in pts:
+            if np.linalg.norm(p - q) < min_dist:
+                ok = False
+                break
+        if ok:
+            pts.append(p)
+
+    if len(pts) < n_points:
+        raise RuntimeError(f"Could only place {len(pts)} / {n_points} points. Try lowering min_dist or increasing bounds/attempts.")
+
+    return np.asarray(pts)
+
 def compute_start_positions(config):
     """Computes positions of first monomers.
 
@@ -128,13 +204,13 @@ def compute_start_positions(config):
     offset = 0.5 * AGRID + a + 1e-07
     offset_sphere = 2*a + 1e-07
 
-    if N_POLYMERS == 1 and not config["geometry"]["SPHERE"]:
+    if N_POLYMERS == 1 and not (config["geometry"]["SPHERE"] or config["geometry"]["MICROCONTRACTION"]):
         random_x = np.array([BOX_Lx / 5])
         random_y = np.array([BOX_Ly / 2])
         z = np.full(N_POLYMERS, offset)
         start_positions = np.stack([random_x, random_y, z], axis=1)
 
-    elif N_POLYMERS == 2 and not config["geometry"]["SPHERE"]:
+    elif N_POLYMERS == 2 and not (config["geometry"]["SPHERE"] or config["geometry"]["MICROCONTRACTION"]):
         spacing = 6 * a
         center_x = BOX_Lx / 4
         center_y = BOX_Ly / 2
@@ -184,6 +260,73 @@ def compute_start_positions(config):
             start_positions_ground = sample_points_min_dist_2d(N_POLYMERS_GROUND, (x_bounds, y_bounds), min_dist, offset, xc=xc, yc=yc, r_excl=r_excl)
 
         start_positions = np.vstack([start_positions_sphere, start_positions_ground])
+    
+    elif config["geometry"]["MICROCONTRACTION"]:
+
+        print("Adding positions from microcontraction")
+        density = config["simulation"]["POLYMER_DENSITY"]
+        y_bounds = (AGRID + 2.0 * a, BOX_Ly - (AGRID + 2.0 * a))
+        offset = 0.5 * AGRID + 3*a + 1e-07
+
+        # first bottom ground area
+        x_bounds_1 = (AGRID, 2.5 - 15*a)
+
+        ground_area_1 = (x_bounds_1[1] - x_bounds_1[0]) * (y_bounds[1] - y_bounds[0])
+        N_POLYMERS_GROUND_1 = int(ground_area_1 * density)
+        print(N_POLYMERS_GROUND_1)
+        start_positions_ground_1 = sample_points_min_dist_2d(N_POLYMERS_GROUND_1, (x_bounds_1, y_bounds), min_dist, offset)
+
+        # flat area on top of the microcontraction
+        x_bounds_2 = (4.5, 5.5)
+
+        ground_area_2 = (x_bounds_2[1] - x_bounds_2[0]) * (y_bounds[1] - y_bounds[0])
+        N_POLYMERS_GROUND_2 = int(ground_area_2 * density)
+        print(N_POLYMERS_GROUND_2)
+        start_positions_ground_2 = sample_points_min_dist_2d(N_POLYMERS_GROUND_2, (x_bounds_2, y_bounds), min_dist, offset=offset+4.25)
+
+        # second bottom ground area
+        x_bounds_3 = (7.5 + 15*a, 10)
+        ground_area_3 = (x_bounds_3[1] - x_bounds_3[0]) * (y_bounds[1] - y_bounds[0])
+        N_POLYMERS_GROUND_3 = int(ground_area_3 * density)
+        print(N_POLYMERS_GROUND_3)
+        start_positions_ground_3 = sample_points_min_dist_2d(N_POLYMERS_GROUND_3, (x_bounds_3, y_bounds), min_dist, offset)
+
+        area_sides = np.sqrt((2 - AGRID)**2 + (4 - AGRID)**2) * (y_bounds[1] - y_bounds[0]) 
+        N_POLYMERS_MICRO = int(area_sides * density)
+
+        # LEFT plane
+        p0 = np.array([2.5, 0.0, 0.0])
+        v1 = np.array([0.0, 8.0, 0.0])
+        v2 = np.array([2., 0.0, 4.])
+
+        start_positions_micro_left = sample_plane_with_xy_bounds_min_dist(
+            n_points=N_POLYMERS_MICRO,
+            p0=p0, v1=v1, v2=v2,
+            x_bounds=(2.5 + AGRID, 4.5),
+            y_bounds=y_bounds,            # or your y_bounds variable
+            min_dist=min_dist,
+            normal_offset=offset,
+            uv_patch=((0.0, 1.0), (0.0, 1.0)))
+
+        # RIGHT plane
+        p0 = np.array([5.5, 0.0, 4.])
+        v1 = np.array([0.0, 8.0, 0.0])
+        v2 = np.array([2., 0.0, -4.])   # downward tilt
+
+        start_positions_micro_right = sample_plane_with_xy_bounds_min_dist(
+            n_points=N_POLYMERS_MICRO,
+            p0=p0, v1=v1, v2=v2,
+            x_bounds=(5.5, 7.5 - AGRID),
+            y_bounds=y_bounds,            # or your y_bounds variable
+            min_dist=min_dist,
+            normal_offset=offset,
+            uv_patch=((0.0, 1.0), (0.0, 1.0)))
+
+        start_positions = np.vstack([start_positions_micro_left, start_positions_micro_right, start_positions_ground_1, start_positions_ground_2, start_positions_ground_3])
+        
+        config["simulation"]["N_POLYMERS_MICROLEFT"] = N_POLYMERS_MICRO
+        config["simulation"]["N_POLYMERS_MICRORIGHT"] = N_POLYMERS_MICRO
+        config["simulation"]["N_POLYMERS"] = N_POLYMERS_GROUND_1 + N_POLYMERS_GROUND_2 + N_POLYMERS_GROUND_3 + 2 * N_POLYMERS_MICRO
 
     else:
         x_bounds = (AGRID + 2.0 * a, BOX_Lx - (AGRID + 2.0 * a))
@@ -302,6 +445,10 @@ def load_polymer_positions(start_positions, config, pos_dir=None):
     a = config["physical"]["a"]
     N_POLYMERS_SPHERE = config["simulation"]["N_POLYMERS_SPHERE"]
 
+    microcontraction = bool(config["geometry"].get("MICROCONTRACTION", False))
+    N_POLYMERS_MICROLEFT  = int(config["simulation"].get("N_POLYMERS_MICROLEFT", 0))
+    N_POLYMERS_MICRORIGHT = int(config["simulation"].get("N_POLYMERS_MICRORIGHT", 0))  # this should be TOTAL micro (left+right) or right-end index as you use it below
+
     if N_MONOMERS==50:
         pos_dir = f"./configs/initial_polymer_positions_k_1000"
         path_to_file = os.path.join(pos_dir, f"init_positions_{N_MONOMERS}_seed_{seed}.npz")
@@ -327,11 +474,21 @@ def load_polymer_positions(start_positions, config, pos_dir=None):
     zc = config["geometry"].get("SPHERE_CENTER_Z")
     offset_sphere = 2*a + 1e-07
     R = float(config["geometry"]["RADIUS_OBJECT"]) + offset_sphere
-    
-    print(xc,yc,zc)
     center = np.array([xc, yc, zc], dtype=float)
     ez = np.array([0.0, 0.0, 1.0], dtype=float)  # original polymer "normal"
 
+    # microcontraction geometry
+    #n_left  = _unit(np.array([-2.0, 0.0, 4.0], dtype=float))
+    n_left  = _unit(np.array([-4.0, 0.0, 2.0], dtype=float))
+    print(n_left)
+    #n_right = _unit(np.array([ 2.0, 0.0, 4.0], dtype=float))
+    n_right = _unit(np.array([ 4.0, 0.0, 2.0], dtype=float))
+    print(n_right)
+
+    # precompute rotation matrices once (constant normals)
+    R_left  = rotation_matrix_from_vectors(ez, n_left)
+    R_right = rotation_matrix_from_vectors(ez, n_right)
+    
     for i in range(N_POLYMERS):
         base = shifted[0]           # (N_MONOMERS, 3)
         pos0 = start_positions[i]   # (3,)
@@ -342,6 +499,14 @@ def load_polymer_positions(start_positions, config, pos_dir=None):
             n = _unit(pos0 - center)                 # outward normal at pos0
             R = rotation_matrix_from_vectors(ez, n)  # rotate +z -> n
             polymer = (R @ polymer.T).T              # apply to all monomers
+        
+        if microcontraction and i < N_POLYMERS_MICROLEFT:
+            # rotate for left plane
+            polymer = (R_left @ polymer.T).T
+
+        if microcontraction and N_POLYMERS_MICROLEFT <= i < N_POLYMERS_MICRORIGHT + N_POLYMERS_MICROLEFT:
+            # rotate for right plane
+            polymer = (R_right @ polymer.T).T
 
         # translate polymer to its start position
         positions[i] = polymer + pos0
@@ -687,7 +852,8 @@ if __name__ == "__main__":
         shear = float(sys.argv[2])
         N_POLYMERS = int(sys.argv[3])
         config["simulation"]["SELF_ASSOCIATE"] = sys.argv[4].lower() == "true"
-        save_dir = str(sys.argv[5])
+        run = int(sys.argv[5])
+        save_dir = str(sys.argv[6])
 
         if config["simulation"]["SELF_ASSOCIATE"]:
             config["output"]["DIRECTORY"] = f"./{save_dir}/{int(shear)}/selfassociation/N_polymers_{N_POLYMERS}/"
@@ -695,7 +861,7 @@ if __name__ == "__main__":
         else:
             config["output"]["DIRECTORY"] = f"./{save_dir}/{int(shear)}/no_selfassociation/N_polymers_{N_POLYMERS}/"
         
-        config["simulation"]["SAVE_VTK"] = True
+        config["simulation"]["SAVE_VTK"] = False
         config["simulation"]["SHEAR"] = shear
         config["simulation"]["TOTAL_TIME"] = 0.15
         config["FORCE_THRESHOLD"] =  0.01
@@ -706,7 +872,7 @@ if __name__ == "__main__":
 
         config["physical"]["k"] = 1000
         config["physical"]["N_MONOMERS"] = 50
-        config["simulation"]["SEED"] = 1
+        config["simulation"]["SEED"] = run
 
         config["simulation"]["LB_TIME_STEP"] = 0.001
         config["simulation"]["TIME_STEP"] = 0.001
@@ -714,57 +880,6 @@ if __name__ == "__main__":
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config)
         add_polymer_positions(config)
-
-    if run_type == "sphere_sampling":
-        shear = float(sys.argv[2])
-        save_dir = str(sys.argv[3])
-
-        print("Run simulation with sphere for sampling on the surface")
-
-        config["output"]["DIRECTORY"] = f"./{save_dir}/"
-
-        config["simulation"]["SAVE_VTK"] = True
-        config["simulation"]["SHEAR"] = shear
-
-        config["simulation"]["COMPUTE_POSITIONS"] = False
-
-        config["simulation"]["SEED"] = 1
-
-        # Run for max density used in the simple geometry, which is 200 polymers in a 72 mum^2 area
-        # calculate number of polymers needed to match that density 
-        # config["simulation"]["N_POLYMERS"] = int(200/72 * 4 * np.pi * config["geometry"]["RADIUS_OBJECT"] ** 2)
-        # config["simulation"]["N_POLYMERS"] = int(10/72 * 4 * np.pi * config["geometry"]["RADIUS_OBJECT"] ** 2)
-        # config["simulation"]["N_POLYMERS_SPHERE"] = 280
-        # config["simulation"]["N_POLYMERS"] = int(280 + 750)
-        # config["simulation"]["N_POLYMERS_SPHERE"] = 185
-        # config["simulation"]["N_POLYMERS"] = int(185 + 450)
-
-        config["simulation"]["N_POLYMERS_SPHERE"] = 70
-        config["simulation"]["N_POLYMERS"] = int(274 + 70)
-
-        config["geometry"]["BOX_Lx"] = 32
-        config["geometry"]["BOX_Ly"] = 12
-        config["geometry"]["BOX_Lz"] = 12
-
-        config["geometry"]["SPHERE"] = True
-        # config["simulation"]["MINIMIZATION_STEPS"] = 200
-
-        config["physical"]["k"] = 1000
-        config["physical"]["N_MONOMERS"] = 50
-
-        config["simulation"]["TOTAL_TIME"] = 0.005
-
-        # config["simulation"]["TIME_STEP"] = 0.001
-        # config["simulation"]["LB_TIME_STEP"] = 0.001
-
-        config["simulation"]["TIME_STEP"] = 0.0005
-        config["simulation"]["LB_TIME_STEP"] = config["simulation"]["TIME_STEP"]
-
-        add_timeloops_from_gridsize(config)
-        add_dependent_parameters(config)
-        add_polymer_positions(config)
-        #config["geometry"]["SPHERE"] = False
-        #config["simulation"]["N_POLYMERS"] = 0
     
     if run_type == "experiment_sphere":
         shear = float(sys.argv[2])
@@ -807,44 +922,45 @@ if __name__ == "__main__":
 
     if run_type == "experiment_microcontraction":
         shear = float(sys.argv[2])
-        save_dir = str(sys.argv[3])
+        config["simulation"]["SELF_ASSOCIATE"] = sys.argv[3].lower() == "true"
+        save_dir = str(sys.argv[4])
 
-        config["output"]["DIRECTORY"] = f"./{save_dir}/"
-    
+        print("Run simulation with microcontraction")
+
+        if config["simulation"]["SELF_ASSOCIATE"]:
+            config["output"]["DIRECTORY"] = f"./{save_dir}/{int(shear)}/selfassociation/"
+
+        else:
+            config["output"]["DIRECTORY"] = f"./{save_dir}/{int(shear)}/no_selfassociation/"
+
+        config["simulation"]["COMPUTE_POSITIONS"] = False
         config["simulation"]["SAVE_VTK"] = True
         config["simulation"]["SHEAR"] = shear
-        config["simulation"]["TOTAL_TIME"] = 0.1
+        config["simulation"]["SEED"] = 1
+        config["simulation"]["TOTAL_TIME"] = 0.005
 
-        # config["simulation"]["N_POLYMERS"] = 50
+        config["geometry"]["BOX_Lx"] = 14
+        config["geometry"]["BOX_Ly"] = 8
+        config["geometry"]["BOX_Lz"] = 6
+
+        config["simulation"]["POLYMER_DENSITY"] = 2
+        #config["simulation"]["POLYMER_DENSITY"] = 0.5
         config["simulation"]["N_POLYMERS"] = 1
-        config["geometry"]["BOX_Lx"] = 300
-        config["geometry"]["BOX_Ly"] = 130
-        config["geometry"]["BOX_Lz"] = 100
+        config["geometry"]["AGRID"] = 0.5
+
         config["geometry"]["MICROCONTRACTION"] = True
-        config["physical"]["k"] = 1000
-        # config["physical"]["N_MONOMERS"] = 120
+
         config["physical"]["N_MONOMERS"] = 50
-        # N_POLYMERS_FREE <= N_POLYMERS
-        # config["simulation"]["N_POLYMERS_FREE"] = 20
-        config["simulation"]["TIME_STEP"] = 0.0005
-        config["simulation"]["LB_TIME_STEP"] = 0.0005
 
-        if config["physical"]["N_MONOMERS"] > 150:
-            config["simulation"]["MINIMIZATION_STEPS"] = 600
-            # config["simulation"]["TIME_STEP"] = 0.001
-            # config["simulation"]["LB_TIME_STEP"] = 0.001
-
-        if 150 >= config["physical"]["N_MONOMERS"] > 50:
-            config["simulation"]["MINIMIZATION_STEPS"] = 400
-            # config["simulation"]["TIME_STEP"] = 0.001
-            # config["simulation"]["LB_TIME_STEP"] = 0.001
-
-        if config["physical"]["N_MONOMERS"] <= 50:
-            config["simulation"]["MINIMIZATION_STEPS"] = 200
+        config["simulation"]["TIME_STEP"] = 0.001/4
+        # config["simulation"]["LB_TIME_STEP"] = config["simulation"]["TIME_STEP"]
+        # config["simulation"]["STEPS"] = int(1000*4)
 
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config)
         add_polymer_positions(config)
+        #config["simulation"]["N_POLYMERS"] = 0
+        config["geometry"]["MICROCONTRACTION"] = False
 
     if config["simulation"]["N_POLYMERS"] > 0:
         lbf, forces, positions, drag_forces, tensile_forces, tensile_vec_forces, added_bonds_per_step = run_simulation(config)
