@@ -16,7 +16,7 @@ def load_npz_first(path):
 shear = 5455
 # shear = 2727
 
-base_dir = f"/home/nroebersen/espresso_project/experiments/density_experiment/{shear}/selfassociation"
+base_dir = f"/home/nroebersen/espresso_project/experiments/density_experiment/run_1/{shear}/selfassociation"
 
 AREA = 72.0
 USE_DENSITY_X = True
@@ -29,7 +29,7 @@ N_MONOMERS_PER_POLYMER = 50.0
 
 # for F>threshold plots
 # THRESHOLD = 20.0  # pN
-THRESHOLD = 27.5
+THRESHOLD = 20
 
 # choose which shear rates to include (edit freely)
 SHEARS_TO_INCLUDE = [1454, 1818, 2727, 3636, 5455]  # 2x2 by default; add more and the code will still work (it will use first 4)
@@ -189,7 +189,7 @@ plt.close(fig)
 # plot 5: ALL shears – cumulative fraction vs density (tab10, wall shear stress labels)
 # ----------------------------
 def collect_assoc_vs_density_for_shear(shear_val):
-    bd = f"/home/nroebersen/espresso_project/experiments/density_experiment/{shear_val}/selfassociation"
+    bd = f"/home/nroebersen/espresso_project/experiments/density_experiment/run_1/{shear_val}/selfassociation"
     if not os.path.isdir(bd):
         return None
 
@@ -250,7 +250,7 @@ ax.legend(
 style_axes(ax)
 
 fig.tight_layout()
-fig.savefig(os.path.join("/home/nroebersen/espresso_project/experiments/density_experiment", "assoc_fraction_vs_density_all_shears.png"), dpi=300)
+fig.savefig(os.path.join("/home/nroebersen/espresso_project/experiments/density_experiment/run_1", "assoc_fraction_vs_density_all_shears.png"), dpi=300)
 plt.close(fig)
 
 # ======================================================================================
@@ -310,8 +310,8 @@ def collect_frac_above_threshold(base_dir_condition, threshold=THRESHOLD):
 # keep only shears that exist for both conditions
 shears_ok = []
 for sh in SHEARS_TO_INCLUDE:
-    bd_self  = f"/home/nroebersen/espresso_project/experiments/density_experiment/{sh}/selfassociation"
-    bd_noself = f"/home/nroebersen/espresso_project/experiments/density_experiment/{sh}/no_selfassociation"
+    bd_self  = f"/home/nroebersen/espresso_project/experiments/density_experiment/run_1/{sh}/selfassociation"
+    bd_noself = f"/home/nroebersen/espresso_project/experiments/density_experiment/run_1/{sh}/no_selfassociation"
     if os.path.isdir(bd_self) and os.path.isdir(bd_noself):
         shears_ok.append(sh)
 
@@ -321,6 +321,7 @@ shears_ok = shears_ok[:4]
 if len(shears_ok) > 0:
     fig, axes = plt.subplots(2, 2, figsize=(6, 4), sharex=True, sharey=False, dpi=300)
     axes = axes.ravel()
+    print("Tensile force above tension plot")
 
     for j, ax in enumerate(axes):
         if j >= len(shears_ok):
@@ -328,8 +329,8 @@ if len(shears_ok) > 0:
             continue
 
         sh = shears_ok[j]
-        base_self  = f"/home/nroebersen/espresso_project/experiments/density_experiment/{sh}/selfassociation"
-        base_noself = f"/home/nroebersen/espresso_project/experiments/density_experiment/{sh}/no_selfassociation"
+        base_self  = f"/home/nroebersen/espresso_project/experiments/density_experiment/run_1/{sh}/selfassociation"
+        base_noself = f"/home/nroebersen/espresso_project/experiments/density_experiment/run_1/{sh}/no_selfassociation"
 
         outA = collect_frac_above_threshold(base_self)
         outB = collect_frac_above_threshold(base_noself)
@@ -365,11 +366,12 @@ if len(shears_ok) > 0:
     fig.tight_layout(rect=[0, 0, 1, 0.95])
     fig.savefig(
         os.path.join(
-            "/home/nroebersen/espresso_project/experiments/density_experiment",
+            "/home/nroebersen/espresso_project/experiments/density_experiment/run_1",
             f"frac_monomers_F_gt_{int(THRESHOLD)}pN_all_shears_2x2.png"
         ),
         dpi=300
     )
+    print("Tensile force above tension plot")
     plt.close(fig)
 
 # ======================================================================================
