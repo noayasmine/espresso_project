@@ -13,7 +13,8 @@ import matplotlib.pyplot as plt
 #   <base>/g_<gamma>/LJ_*/gamma_*/shear_*/run_*   gamma read exactly from g_<gamma> (for gamma < 1e-3)
 experiments = "/home/nroebersen/espresso_project/experiments"
 mass_sets = {  # monomer mass: (folders, largest gamma to plot or None)
-    1.0: ([os.path.join(experiments, "gamma_calibration"), os.path.join(experiments, "gamma_low")], 0.0003),
+    1.0: ([os.path.join(experiments, "gamma_calibration"), os.path.join(experiments, "gamma_low"),
+           os.path.join(experiments, "gamma_eps")], 0.0003),
     0.01: ([os.path.join(experiments, "gamma_mass", "m_0.01")], None),
     0.001: ([os.path.join(experiments, "gamma_mass", "m_0.001")], None),
 }
