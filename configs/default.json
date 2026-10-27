@@ -1,6 +1,7 @@
 {
   "physical": {
     "KT": 4.280012e-06,
+    "MASS": 1.0,
     "GAMMA": 0.0110,
     "e_LJ":18,
     "N_MONOMERS": 50,

@@ -607,6 +607,9 @@ if __name__ == "__main__":
     # job scripts using the patched ESPResSo build can set NEARWALL_FIX=true instead of editing default.json
     if "NEARWALL_FIX" in os.environ:
         config["simulation"]["NEARWALL_FIX"] = os.environ["NEARWALL_FIX"].lower() == "true"
+    # monomer mass for convergence tests (default 1 in default.json)
+    if "MASS" in os.environ:
+        config["physical"]["MASS"] = float(os.environ["MASS"])
     run_type = str(sys.argv[1])
 
     if run_type == "test_gridsizes":

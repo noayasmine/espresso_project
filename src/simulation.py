@@ -355,7 +355,7 @@ def remove_bonds(system, below_ids, fene, bonds, degree, type_dictionary):
 
     return removed_bonds
 
-def build_polymers(system, n_monomers, n_polymers, start_positions, positions, fene, bond_length, SEED, TETHERED=True, COILED=True, COMPUTE_POSITIONS=True):
+def build_polymers(system, n_monomers, n_polymers, start_positions, positions, fene, bond_length, SEED, TETHERED=True, COILED=True, COMPUTE_POSITIONS=True, mass=1.0):
     
     # compute positions here only if we are not using precomputed positions
     if COILED and COMPUTE_POSITIONS:
@@ -371,7 +371,7 @@ def build_polymers(system, n_monomers, n_polymers, start_positions, positions, f
 
         # type per polymer, each monomer has unique id
         for i, pos in enumerate(positions[j]):
-            p = system.part.add(pos=pos, type=j)
+            p = system.part.add(pos=pos, type=j, mass=mass)
             type_dictionary.update({p.id: j})
 
             if i == 0:
@@ -523,8 +523,11 @@ def run_simulation(params):
     if N_POLYMERS > 0:
         logging.info("Build Polymer(s).")
         print(START_POSITIONS.shape)
+        # monomer mass; ESPResSo's default is 1 (= 1e-11 kg), kept as default in the config
+        MASS = phys.get("MASS", 1.0)
+        logging.info(f"Monomer mass = {MASS}")
         type_dictionary, type_to_ids = build_polymers(system, N_MONOMERS, N_POLYMERS, START_POSITIONS, POSITIONS, fene, r_0, SEED, \
-            TETHERED, COILED, COMPUTE_POSITIONS)
+            TETHERED, COILED, COMPUTE_POSITIONS, mass=MASS)
         
         # Add soft sphere potential between walls and particles
         for particle_type in all_types:
