@@ -29,6 +29,7 @@
     "SEED": 42,
     "stdev_initial_pos":0.15,
     "SAVE_VTK":false,
+    "SAVE_EVERY":1,
     "MINIMIZATION_STEPS":200,
     "MINIMIZATION_TIME":0.05,
     "POSITIONS":[],

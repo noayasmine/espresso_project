@@ -11,12 +11,13 @@ def save_results(config, lbf, accumulator_forces, drag_forces, tensile_forces, t
     BOX_Ly = config["geometry"]["BOX_Ly"]
     BOX_Lz = config["geometry"]["BOX_Lz"]
     outdir = config["output"]["DIRECTORY"]
+    save_every = config["simulation"].get("SAVE_EVERY", 1)  # keep every n-th frame of positions/forces/drag
 
     os.makedirs(outdir, exist_ok=True)
 
-    np.savez_compressed(os.path.join(outdir, "positions.npz"), positions=accumulator_positions.time_series())
-    np.savez_compressed(os.path.join(outdir, "drag_forces.npz"), forces=drag_forces)
-    np.savez_compressed(os.path.join(outdir, "forces.npz"), forces=accumulator_forces.time_series())
+    np.savez_compressed(os.path.join(outdir, "positions.npz"), positions=accumulator_positions.time_series()[::save_every].astype(np.float32))
+    np.savez_compressed(os.path.join(outdir, "drag_forces.npz"), forces=drag_forces[::save_every])
+    np.savez_compressed(os.path.join(outdir, "forces.npz"), forces=accumulator_forces.time_series()[::save_every].astype(np.float32))
     np.savez_compressed(os.path.join(outdir, "tensile_forces.npz"), forces=tensile_forces)
     # np.savez_compressed(os.path.join(outdir, "tensile_forces_vec.npz"), forces=tensile_vec_forces)
     np.savez_compressed(os.path.join(outdir, "added_bonds.npz"), bonds=added_bonds_per_step)
@@ -109,7 +110,7 @@ def save_velocity_field(config, lbf):
     vx_only = velocities_reshaped[..., 0]
     z_avg_vx = vx_only.mean(axis=(0, 1))
 
-    # np.savez_compressed(os.path.join(outdir, "velocity_profile.npz"), z_avg_vx=z_avg_vx)
+    np.savez_compressed(os.path.join(outdir, "velocity_profile.npz"), z_avg_vx=z_avg_vx)
 
     # ----------------------------
     # new: one x–z plane at y = 4 (same style)

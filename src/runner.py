@@ -16,8 +16,15 @@ def add_dependent_parameters(config, LJ_strength=18):
     config["physical"]["epsilon"] = LJ_strength * config["physical"]["KT"]
     config["physical"]["cutoff"] = 6 * config["physical"]["a"]
     # Compute velocity (in MD units, i.e. 1e2 m/s )
-    config["simulation"]["SHEAR"] = (4/3) * config["simulation"]["SHEAR"]
-    config["simulation"]["VELOCITY"] = config["simulation"]["SHEAR"] * 1e-4 * (config["geometry"]["BOX_Lz"] - config["geometry"]["AGRID"])
+    if config["simulation"]["TETHERED"]:
+        # Halfway bounce-back puts the LB walls at AGRID and BOX_Lz - AGRID, so the fluid gap is
+        # BOX_Lz - 2*AGRID. Tethered beads sit in the first cell, where the interpolated velocity
+        # runs from the boundary node (u_wall) to the first fluid node and has half the bulk slope.
+        # Doubling the velocity makes that first-cell shear equal to SHEAR (same as the old 4/3 for Lz=4, AGRID=1).
+        config["simulation"]["VELOCITY"] = 2 * config["simulation"]["SHEAR"] * 1e-4 * (config["geometry"]["BOX_Lz"] - 2 * config["geometry"]["AGRID"])
+    else:
+        config["simulation"]["SHEAR"] = (4/3) * config["simulation"]["SHEAR"]
+        config["simulation"]["VELOCITY"] = config["simulation"]["SHEAR"] * 1e-4 * (config["geometry"]["BOX_Lz"] - config["geometry"]["AGRID"])
 
 def sample_points_min_dist_2d(n_points, bounds, min_dist, offset, max_attempts=100000, xc=None, yc=None, r_excl=1.8):
     """
@@ -831,7 +838,7 @@ if __name__ == "__main__":
         config["simulation"]["TOTAL_TIME"] = 0.001
         config["FORCE_THRESHOLD"] =  0.01
 
-        config["geometry"]["SPHERE"] = True
+        config["geometry"]["SPHERE"] = False
         if config["geometry"]["SPHERE"]:
             config["geometry"]["BOX_Lx"] = 100
             config["geometry"]["BOX_Ly"] = 50
@@ -862,6 +869,7 @@ if __name__ == "__main__":
             config["output"]["DIRECTORY"] = f"./{save_dir}/{int(shear)}/no_selfassociation/N_polymers_{N_POLYMERS}/"
         
         config["simulation"]["SAVE_VTK"] = False
+        config["simulation"]["SAVE_EVERY"] = 5
         config["simulation"]["SHEAR"] = shear
         config["simulation"]["TOTAL_TIME"] = 0.15
         config["FORCE_THRESHOLD"] =  0.01
@@ -897,6 +905,7 @@ if __name__ == "__main__":
         config["simulation"]["POLYMER_DENSITY"] = 1.8
 
         config["simulation"]["SAVE_VTK"] = True
+        config["simulation"]["SAVE_EVERY"] = 5
         config["simulation"]["SHEAR"] = shear
 
         config["simulation"]["TOTAL_TIME"] = 0.12
@@ -935,6 +944,7 @@ if __name__ == "__main__":
 
         config["simulation"]["COMPUTE_POSITIONS"] = False
         config["simulation"]["SAVE_VTK"] = True
+        config["simulation"]["SAVE_EVERY"] = 5
         config["simulation"]["SHEAR"] = shear
         config["simulation"]["SEED"] = 1
         config["simulation"]["TOTAL_TIME"] = 0.005
