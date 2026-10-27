@@ -107,7 +107,7 @@ for mass, (base_dirs, gamma_max) in mass_sets.items():
         plt.fill_between(np.arange(N), ref - sigma_ref, ref + sigma_ref, color="grey", alpha=0.2)
         plt.xlabel("Monomer index")
         plt.ylabel("Tensile force [pN]")
-        plt.title(f"monomer mass {mass}", fontsize=9)
+        plt.title(fr"monomer mass {mass}, $\epsilon_{{LJ}}$ = {int(lj.split('_')[1]) / 100:g} $k_BT$", fontsize=9)
         plt.legend(fontsize=7)
         plt.tight_layout()
         out = os.path.join(out_dir, f"gamma_calibration_{lj}_m{mass}_shear_{target_shear}.png")
