@@ -10,13 +10,22 @@ def load_config(path):
     with open(path) as f:
         return json.load(f)
     
+def wall_height(config):
+    """z of the particle walls and tether plane. With NEARWALL_FIX (patched ESPResSo velocity readout)
+    this is the halfway bounce-back LB wall at AGRID; otherwise the boundary node centre at 0.5*AGRID."""
+    AGRID = config["geometry"]["AGRID"]
+    return AGRID if config["simulation"].get("NEARWALL_FIX", False) else 0.5 * AGRID
+
 def add_dependent_parameters(config, LJ_strength=18):
     config["physical"]["r_0"] = 2 * config["physical"]["a"]
     config["physical"]["sigma"] = (2 ** (-1/6)) * config["physical"]["r_0"]
     config["physical"]["epsilon"] = LJ_strength * config["physical"]["KT"]
     config["physical"]["cutoff"] = 6 * config["physical"]["a"]
     # Compute velocity (in MD units, i.e. 1e2 m/s )
-    if config["simulation"]["TETHERED"]:
+    if config["simulation"].get("NEARWALL_FIX", False):
+        # Patched readout: interpolated profile is linear from the LB walls at AGRID and BOX_Lz - AGRID.
+        config["simulation"]["VELOCITY"] = config["simulation"]["SHEAR"] * 1e-4 * (config["geometry"]["BOX_Lz"] - 2 * config["geometry"]["AGRID"])
+    elif config["simulation"]["TETHERED"]:
         # Halfway bounce-back puts the LB walls at AGRID and BOX_Lz - AGRID, so the fluid gap is
         # BOX_Lz - 2*AGRID. Tethered beads sit in the first cell, where the interpolated velocity
         # runs from the boundary node (u_wall) to the first fluid node and has half the bulk slope.
@@ -208,7 +217,8 @@ def compute_start_positions(config):
     if N_MONOMERS == 100:
         min_dist = 16.0 * a
 
-    offset = 0.5 * AGRID + a + 1e-07
+    wall_z = wall_height(config)
+    offset = wall_z + a + 1e-07
     offset_sphere = 2*a + 1e-07
 
     if N_POLYMERS == 1 and not (config["geometry"]["SPHERE"] or config["geometry"]["MICROCONTRACTION"]):
@@ -230,11 +240,11 @@ def compute_start_positions(config):
         R = config["geometry"].get("RADIUS_OBJECT")
         xc = config["geometry"].get("SPHERE_CENTER_X")
         yc = config["geometry"].get("SPHERE_CENTER_Y")
-        zc = config["geometry"].get("RADIUS_OBJECT") + 0.5 * AGRID
+        zc = config["geometry"].get("RADIUS_OBJECT") + wall_z
         config["geometry"]["SPHERE_CENTER_Z"] = zc
         density = config["simulation"]["POLYMER_DENSITY"]
-        # setting minimal value of z=1.1 for tethered polymers on the sphere to satisfy wall overlapping monomers constraints
-        min_z_val_sphere = 1.1 
+        # setting minimal value of z=1.1 (0.6 above the wall) for tethered polymers on the sphere to satisfy wall overlapping monomers constraints
+        min_z_val_sphere = wall_z + 0.6
         # excluding area with radius r_excl around sphere center for polymers on ground 
         # to satisfy wall overlapping monomers constraints
         r_excl = 1.8 
@@ -244,7 +254,7 @@ def compute_start_positions(config):
 
         radius_particle_sampling = config["geometry"].get("RADIUS_OBJECT") + offset_sphere
 
-        cut_distance = min_z_val_sphere - 0.5 * AGRID
+        cut_distance = min_z_val_sphere - wall_z
         sphere_area = 4 * np.pi * radius_particle_sampling ** 2 - (2 * np.pi * radius_particle_sampling * (radius_particle_sampling - cut_distance))
         ground_area = (x_bounds[1] - x_bounds[0]) * (y_bounds[1] - y_bounds[0]) - np.pi * r_excl ** 2
         
@@ -273,7 +283,7 @@ def compute_start_positions(config):
         print("Adding positions from microcontraction")
         density = config["simulation"]["POLYMER_DENSITY"]
         y_bounds = (AGRID + 2.0 * a, BOX_Ly - (AGRID + 2.0 * a))
-        offset = 0.5 * AGRID + 3*a + 1e-07
+        offset = wall_z + 3*a + 1e-07
 
         # first bottom ground area
         x_bounds_1 = (AGRID, 2.5 - 15*a)
@@ -565,7 +575,7 @@ def add_polymer_positions(config):
             # ensure constraint of wall in z-direction (above soft sphere 2 * a + 1e-07)
             # polymer_positions[:, 2] = np.maximum(polymer_positions[:, 2], 0.5 * AGRID + 0.001)
             # (above soft sphere 2 * a + 1e-07)
-            polymer_positions[:, 2] = np.maximum(polymer_positions[:, 2], 0.5 * AGRID + a + 1e-07)
+            polymer_positions[:, 2] = np.maximum(polymer_positions[:, 2], wall_height(config) + a + 1e-07)
             positions.append(polymer_positions)
         
         config["simulation"]["POSITIONS"] = positions
@@ -872,6 +882,8 @@ if __name__ == "__main__":
         config["simulation"]["SAVE_EVERY"] = 5
         config["simulation"]["SHEAR"] = shear
         config["simulation"]["TOTAL_TIME"] = 0.15
+        # 4 um of fluid between the halfway bounce-back LB walls at AGRID and BOX_Lz - AGRID (as in the paper)
+        config["geometry"]["BOX_Lz"] = 4 + 2 * config["geometry"]["AGRID"]
         config["FORCE_THRESHOLD"] =  0.01
 
         config["simulation"]["COMPUTE_POSITIONS"] = False

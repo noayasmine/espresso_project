@@ -411,6 +411,12 @@ def run_simulation(params):
     TETHERED = sim["TETHERED"]
     COILED = sim["COILED"]
 
+    # NEARWALL_FIX needs the patched ESPResSo build (wall-aware velocity readout): particle walls
+    # then sit on the halfway bounce-back LB walls at AGRID instead of at the boundary node centre.
+    NEARWALL_FIX = sim.get("NEARWALL_FIX", False)
+    wall_z = AGRID if NEARWALL_FIX else 0.5 * AGRID
+    logging.info(f"NEARWALL_FIX={NEARWALL_FIX}, particle walls at z={wall_z}, espressomd from {espressomd.__file__}")
+
     # set shear times 4/3 to account for boundary condition
     SHEAR = sim["SHEAR"] * 1e-4  # convert to sim units
     save_VTK = sim["SAVE_VTK"]
@@ -484,8 +490,8 @@ def run_simulation(params):
         logging.info(f"LJ parameters: epsilon={epsilon}, sigma={sigma}, shift={shift}, cutoff={cutoff}")
 
     # Wall constraints
-    wall_shape_z_up = espressomd.shapes.Wall(normal=[0, 0, 1], dist=AGRID * 0.5)
-    wall_shape_z_down = espressomd.shapes.Wall(normal=[0, 0, -1], dist=-(BOX_Lz - AGRID * 0.5))
+    wall_shape_z_up = espressomd.shapes.Wall(normal=[0, 0, 1], dist=wall_z)
+    wall_shape_z_down = espressomd.shapes.Wall(normal=[0, 0, -1], dist=-(BOX_Lz - wall_z))
 
     # particle type per polymer range from [0, N_POLYMER-1], giving LB shapes "particle type" N_POLYMERS
     system.constraints.add(particle_type=N_POLYMERS, penetrable=False, shape=wall_shape_z_up)
@@ -579,7 +585,8 @@ def run_simulation(params):
     if geo_sphere:
         # effecitvely placing the sphere at 
         # sphere = espressomd.shapes.Sphere(radius=radius_object + AGRID*0.5, center=[25, 25, radius_object + 0.5 * AGRID])
-        sphere = espressomd.shapes.Sphere(radius=radius_object, center=[xc, yc, zc+0.5 * AGRID])
+        # with NEARWALL_FIX the LB sphere coincides with the particle sphere (no half-cell shift)
+        sphere = espressomd.shapes.Sphere(radius=radius_object, center=[xc, yc, zc if NEARWALL_FIX else zc + 0.5 * AGRID])
         system.lbboundaries.add(espressomd.lbboundaries.LBBoundary(shape=sphere, velocity=[0, 0, 0]))
     
     if geo_microcontraction:
