@@ -7,8 +7,14 @@ import matplotlib.pyplot as plt
 # settings
 # ------------------------------------------------
 # gamma sweep of the tethered N=100 calibration (Fig. 5 setup) at 1280 dyn/cm2 = 128,000 1/s in 1 cP buffer,
-# one plot per LJ_* folder
-base_dir = "/home/nroebersen/espresso_project/experiments/gamma_calibration"
+# one plot per LJ strength. Two folder layouts are read:
+#   <base>/LJ_*/gamma_*/shear_*/run_*        gamma from the folder name (resolution 1e-4)
+#   <base>/g_<gamma>/LJ_*/gamma_*/shear_*/run_*   gamma read exactly from g_<gamma> (for gamma < 1e-3)
+base_dirs = [
+    "/home/nroebersen/espresso_project/experiments/gamma_calibration",
+    "/home/nroebersen/espresso_project/experiments/gamma_low",
+]
+out_dir = "/home/nroebersen/espresso_project/experiments/gamma_calibration"
 target_shear = 128000
 avg_window = 20       # trailing moving average over saved points
 time_avg_steps = 100  # average over the last saved points
@@ -43,22 +49,35 @@ def tensile_profiles(shear_dir):
     return np.vstack(profiles) if profiles else None
 
 
-lj_dirs = sorted(os.path.join(base_dir, d) for d in os.listdir(base_dir) if re.match(r"^LJ_\d+$", d))
+def subdirs(path, pattern):
+    return [d for d in os.listdir(path) if re.match(pattern, d)] if os.path.isdir(path) else []
 
-for lj_dir in lj_dirs:
-    print(f"===== {os.path.basename(lj_dir)} =====")
-    gamma_dirs = sorted((d for d in os.listdir(lj_dir) if re.match(r"^gamma_\d+$", d)), key=lambda g: int(g.split("_")[1]))
-    colors = plt.get_cmap("viridis")(np.linspace(0, 0.9, max(len(gamma_dirs), 1)))
+
+def collect_cases():
+    """{LJ folder name: {gamma: shear_dir}} from both folder layouts."""
+    cases = {}
+    for base in base_dirs:
+        roots = [(None, base)] + [(float(g[2:]), os.path.join(base, g)) for g in subdirs(base, r"^g_[0-9.eE+-]+$")]
+        for gamma_exact, root in roots:
+            for lj in subdirs(root, r"^LJ_\d+$"):
+                for gdir in subdirs(os.path.join(root, lj), r"^gamma_\d+$"):
+                    shear_dir = os.path.join(root, lj, gdir, f"shear_{target_shear}")
+                    if os.path.isdir(shear_dir):
+                        gamma = gamma_exact if gamma_exact is not None else int(gdir.split("_")[1]) / 1e4
+                        cases.setdefault(lj, {})[gamma] = shear_dir
+    return cases
+
+
+for lj, by_gamma in sorted(collect_cases().items()):
+    print(f"===== {lj} =====")
+    gammas = sorted(by_gamma)
+    colors = plt.get_cmap("viridis")(np.linspace(0, 0.9, max(len(gammas), 1)))
 
     plt.figure(figsize=(6, 4))
     N = None
-    for gdir, color in zip(gamma_dirs, colors):
-        gamma = int(gdir.split("_")[1]) / 1e4
-        shear_dir = os.path.join(lj_dir, gdir, f"shear_{target_shear}")
-        if not os.path.isdir(shear_dir):
-            continue
-        print(f"gamma = {gamma:.4f}")
-        cum = tensile_profiles(shear_dir)
+    for gamma, color in zip(gammas, colors):
+        print(f"gamma = {gamma:.6g}")
+        cum = tensile_profiles(by_gamma[gamma])
         if cum is None:
             print("  no stable runs")
             continue
@@ -71,7 +90,7 @@ for lj_dir in lj_dirs:
         print(f"  stable runs={cum.shape[0]}, tether force={mu[0]:.1f} +- {sig[0]:.1f} pN (ref {ref[0]:.0f}), "
               f"drag per monomer={mu[0] / N:.3f} pN, t2={t2:.3f}")
         plt.errorbar(np.arange(N), mu, yerr=sig, color=color, lw=1.2, elinewidth=0.5, capsize=2,
-                     label=fr"$\gamma$={gamma:.4f} ($t^2_{{{N}}}$={t2:.3f})")
+                     label=fr"$\gamma$={gamma:.6g} ($t^2_{{{N}}}$={t2:.3f})")
 
     if N is None:
         print("  no results yet, no plot")
@@ -83,7 +102,7 @@ for lj_dir in lj_dirs:
     plt.ylabel("Tensile force [pN]")
     plt.legend(fontsize=7)
     plt.tight_layout()
-    out = os.path.join(lj_dir, f"gamma_calibration_shear_{target_shear}.png")
+    out = os.path.join(out_dir, f"gamma_calibration_{lj}_shear_{target_shear}.png")
     plt.savefig(out, dpi=300)
     plt.close()
     print(f"Saved: {out}")
