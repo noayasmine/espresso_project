@@ -20,6 +20,7 @@ avg_window = 20       # trailing moving average over saved points
 time_avg_steps = 100  # average over the last saved points
 ref_per_mono, sigma_per_mono = 0.5, 0.1  # Fu et al. [pN per monomer]
 unstable_drag = 100.0  # [pN] runs with a drag spike above this are reported and left out of the average
+gamma_max = 0.0006     # leave larger gamma out of the plot (None: plot all)
 
 
 def moving_average_trailing_matrix(x, window):
@@ -70,7 +71,7 @@ def collect_cases():
 
 for lj, by_gamma in sorted(collect_cases().items()):
     print(f"===== {lj} =====")
-    gammas = sorted(by_gamma)
+    gammas = sorted(g for g in by_gamma if gamma_max is None or g <= gamma_max)
     colors = plt.get_cmap("viridis")(np.linspace(0, 0.9, max(len(gammas), 1)))
 
     plt.figure(figsize=(6, 4))
