@@ -15,6 +15,7 @@ case_dirs = {
 avg_window = 20       # trailing moving average over saved points
 time_avg_steps = 100  # average over the last saved points
 ref_per_mono, sigma_per_mono = 0.5, 0.1  # Fu et al. [pN per monomer]
+unstable_drag = 100.0  # [pN] runs with a drag spike above this are reported and left out of the average
 
 
 def moving_average_trailing_matrix(x, window):
@@ -33,7 +34,12 @@ def tensile_profiles(shear_dir):
         F = np.load(os.path.join(shear_dir, r, "drag_forces.npz"))["forces"]
         Fmag = np.linalg.norm(F, axis=2) * 1000.0
         per_run = moving_average_trailing_matrix(Fmag, avg_window)[-time_avg_steps:].mean(axis=0)
-        profiles.append(np.cumsum(per_run[::-1])[::-1])
+        cum = np.cumsum(per_run[::-1])[::-1]
+        if Fmag.max() > unstable_drag:
+            print(f"  unstable: {r} (max |F_drag| = {Fmag.max():.0f} pN at saved step {np.unravel_index(Fmag.argmax(), Fmag.shape)[0]}, "
+                  f"tether force {cum[0]:.1f} pN)")
+            continue
+        profiles.append(cum)
     return np.vstack(profiles)
 
 
@@ -49,8 +55,8 @@ for label, shear_dir in case_dirs.items():
     mu = cum.mean(axis=0)
     sig = cum.std(axis=0, ddof=1) if cum.shape[0] > 1 else np.zeros(N)
     t2 = np.mean(((mu - ref) / (sig + sigma_ref)) ** 2)
-    print(f"{label}: runs={cum.shape[0]}, tether force={mu[0]:.1f} +- {sig[0]:.1f} pN "
-          f"(ref {ref[0]:.0f}), mean ratio to ref={np.mean(mu / ref):.3f}, t2={t2:.3f}")
+    print(f"{label}: stable runs={cum.shape[0]}, tether force={mu[0]:.1f} +- {sig[0]:.1f} pN "
+          f"(ref {ref[0]:.0f}), drag per monomer={mu[0] / N:.3f} pN, t2={t2:.3f}")
     plt.errorbar(np.arange(N), mu, yerr=sig, lw=1.2, elinewidth=0.5, capsize=2, label=f"{label} ($t^2$={t2:.3f})")
 
 plt.plot(np.arange(N), ref, "--", color="grey", label=r"Fu et al. $0.5 \pm 0.1$ pN/mono")

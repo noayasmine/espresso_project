@@ -993,6 +993,10 @@ if __name__ == "__main__":
         #config["simulation"]["N_POLYMERS"] = 0
         config["geometry"]["MICROCONTRACTION"] = False
 
+    # job scripts can switch on VTK output (e.g. for test runs) with SAVE_VTK=true
+    if "SAVE_VTK" in os.environ:
+        config["simulation"]["SAVE_VTK"] = os.environ["SAVE_VTK"].lower() == "true"
+
     if config["simulation"]["N_POLYMERS"] > 0:
         lbf, forces, positions, drag_forces, tensile_forces, tensile_vec_forces, added_bonds_per_step = run_simulation(config)
         save_results(config, lbf, forces, drag_forces, tensile_forces, tensile_vec_forces, added_bonds_per_step, positions)
