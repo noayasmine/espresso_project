@@ -7,8 +7,8 @@ import os
 # ------------------------------------------------
 base = "/home/nroebersen/espresso_project/experiments/nearwall_test"
 folders = {
-    "stock 4.2.2": os.path.join(base, "stock", "11636"),
-    "nearwall-fix": os.path.join(base, "nearwall_fix", "11636"),
+    "stock 4.2.2": os.path.join(base, "stock_Lz6", "11636"),
+    "nearwall-fix + NEARWALL_FIX": os.path.join(base, "nearwall_fix_flag", "11636"),
 }
 step = 0.1  # grid spacing in z
 
@@ -55,7 +55,8 @@ plt.figure(figsize=(5, 4))
 for label, (z, _, dv_dz) in profiles.items():
     plt.plot(z, dv_dz * 10 ** 4, lw=2, label=label)
 plt.axhline(11636, color='red', label="Expected shear")
-plt.axvline(0.5+0.03, color='green', label="Polymer position")
+plt.axvline(0.5+0.03, color='green', label="Polymer position (stock)")
+plt.axvline(1.0+0.03, color='green', ls='--', label="Polymer position (NEARWALL_FIX)")
 plt.xlabel("z")
 plt.ylabel(r"$\mathrm{d}\langle v_x \rangle_{x,y} / \mathrm{d}z$")
 plt.legend()

@@ -848,7 +848,13 @@ if __name__ == "__main__":
         config["simulation"]["TOTAL_TIME"] = 0.001
         config["FORCE_THRESHOLD"] =  0.01
 
+        # optional 4th argument: NEARWALL_FIX true/false (requires the patched ESPResSo build when true)
+        if len(sys.argv) > 4:
+            config["simulation"]["NEARWALL_FIX"] = sys.argv[4].lower() == "true"
+
         config["geometry"]["SPHERE"] = False
+        # 4 um of fluid between the LB walls, as in experiment_density
+        config["geometry"]["BOX_Lz"] = 4 + 2 * config["geometry"]["AGRID"]
         if config["geometry"]["SPHERE"]:
             config["geometry"]["BOX_Lx"] = 100
             config["geometry"]["BOX_Ly"] = 50
