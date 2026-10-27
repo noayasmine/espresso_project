@@ -20,7 +20,7 @@ avg_window = 20       # trailing moving average over saved points
 time_avg_steps = 100  # average over the last saved points
 ref_per_mono, sigma_per_mono = 0.5, 0.1  # Fu et al. [pN per monomer]
 unstable_drag = 100.0  # [pN] runs with a drag spike above this are reported and left out of the average
-gamma_max = 0.0006     # leave larger gamma out of the plot (None: plot all)
+gamma_max = 0.0003     # leave larger gamma out of the plot (None: plot all)
 
 
 def moving_average_trailing_matrix(x, window):
