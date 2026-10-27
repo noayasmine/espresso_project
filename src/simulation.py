@@ -266,23 +266,23 @@ def add_tensile_forces_to_vtk(vtk_path, tensile_forces):
     with open(vtk_path, "w") as f:
         f.writelines(new_lines)
 
-def add_bonds(system, exceeding_ids, fene, type_dictionary, distance, type_to_ids, bonds, degree):
+def add_bonds(system, exceeding_ids, fene, type_dictionary, distance, type_to_ids, bonds, sa_initiated):
     """
-    Create FENE bonds between particles that:
-      - are within 'distance',
-      - belong to different polymers,
-      - are not already bonded in THIS direction,
-      - and respect a max-3-bonds-per-particle rule.
+    Create FENE self-association bonds. Each particle above threshold initiates
+    at most one bond, to the nearest particle that:
+      - is within 'distance',
+      - belongs to a different polymer,
+      - is not already bonded to it in either direction.
+    A particle can still receive bonds initiated by others.
     """
 
-    exc_ids_set = set(int(i) for i in exceeding_ids)
-    print(f"exceeding ids: {exc_ids_set}")
+    exc_ids = sorted(int(i) for i in exceeding_ids)
+    print(f"exceeding ids: {exc_ids}")
     added_bonds = []
 
-    for pid in exc_ids_set:
-        # Respect max-bond rule for this particle
-        if degree[pid] >= 3:
-            # print(f"Particle {pid} already has three bonds.")
+    for pid in exc_ids:
+        # each particle initiates at most one self-association bond
+        if sa_initiated[pid]:
             continue
 
         p_handle = system.part.by_id(pid)
@@ -293,30 +293,22 @@ def add_bonds(system, exceeding_ids, fene, type_dictionary, distance, type_to_id
         neighbor_ids = system.cell_system.get_neighbors(p_handle, distance)
         neighbor_ids_set = {int(nid) for nid in neighbor_ids}
 
-        # Candidates: neighbors not in same polymer
-        candidates = neighbor_ids_set - same_type_ids
+        # Candidates: neighbors not in same polymer and not bonded in either direction
+        candidates = [nid for nid in neighbor_ids_set - same_type_ids
+                      if nid not in bonds[pid] and pid not in bonds[nid]]
+        if not candidates:
+            continue
 
-        for pid_neighbor in candidates:
+        # bond to the nearest candidate
+        pid_neighbor = min(candidates, key=lambda nid: system.distance(p_handle, system.part.by_id(nid)))
+        p_handle_neighbor = system.part.by_id(pid_neighbor)
+        p_handle.add_bond((fene, p_handle_neighbor))
 
-            # directed bond check
-            if pid_neighbor in bonds[pid]:
-                # print(f"Directed bond {pid} -> {pid_neighbor} already exists")
-                continue
+        # update global state
+        bonds[pid].add(pid_neighbor)
+        sa_initiated[pid] = True
 
-            # add bond
-            # print(f"Add directed bond {pid} -> {pid_neighbor}")
-            p_handle_neighbor = system.part.by_id(pid_neighbor)
-            p_handle.add_bond((fene, p_handle_neighbor))
-
-            # update global state
-            bonds[pid].add(pid_neighbor)
-            degree[pid] += 1
-
-            added_bonds.append((pid, pid_neighbor))
-
-            # stop if pid reached its limit
-            if degree[pid] >= 3:
-                break
+        added_bonds.append((pid, pid_neighbor))
 
     # print(f"Added bonds: {added_bonds}")
     return added_bonds
@@ -612,8 +604,8 @@ def run_simulation(params):
         WINDOW = 20
 
         # Directed bond dictionary
-        bonds = defaultdict(set)     # i -> {j, k, ...}
-        degree = defaultdict(int)    # out-degree (or total degree initially)
+        bonds = defaultdict(set)            # i -> {j, k, ...}
+        sa_initiated = defaultdict(bool)    # True once i has initiated its self-association bond
 
         for p in system.part:
             pid = int(p.id)
@@ -621,13 +613,8 @@ def run_simulation(params):
                 qid = int(getattr(partner, "id", partner))
 
                 # add both directions (initially symmetric)
-                if qid not in bonds[pid]:
-                    bonds[pid].add(qid)
-                    degree[pid] += 1
-
-                if pid not in bonds[qid]:
-                    bonds[qid].add(pid)
-                    degree[qid] += 1
+                bonds[pid].add(qid)
+                bonds[qid].add(pid)
     
     print(system.actors.active_actors)
     end_time_init = time.time()
@@ -699,7 +686,7 @@ def run_simulation(params):
                 R_CAPTURE = 2 * a
 
                 added_pairs = add_bonds(system, exceeding_ids, fene=fene, type_dictionary=type_dictionary, distance=R_CAPTURE,
-                    type_to_ids=type_to_ids, bonds=bonds, degree=degree)
+                    type_to_ids=type_to_ids, bonds=bonds, sa_initiated=sa_initiated)
                 
                 added_bonds_per_step_traj[i] = len(added_pairs)
                 # print(added_bonds_per_step_traj)
@@ -749,7 +736,7 @@ def run_simulation(params):
                 R_CAPTURE = 2 * a
 
                 added_pairs = add_bonds(system, exceeding_ids, fene=fene, type_dictionary=type_dictionary, distance=R_CAPTURE,
-                    type_to_ids=type_to_ids, bonds=bonds, degree=degree)
+                    type_to_ids=type_to_ids, bonds=bonds, sa_initiated=sa_initiated)
                 
                 added_bonds_per_step_traj[i] = len(added_pairs)
                 # print(added_bonds_per_step_traj)
