@@ -51,6 +51,7 @@ for lj_dir in lj_dirs:
     colors = plt.get_cmap("viridis")(np.linspace(0, 0.9, max(len(gamma_dirs), 1)))
 
     plt.figure(figsize=(6, 4))
+    N = None
     for gdir, color in zip(gamma_dirs, colors):
         gamma = int(gdir.split("_")[1]) / 1e4
         shear_dir = os.path.join(lj_dir, gdir, f"shear_{target_shear}")
@@ -72,6 +73,10 @@ for lj_dir in lj_dirs:
         plt.errorbar(np.arange(N), mu, yerr=sig, color=color, lw=1.2, elinewidth=0.5, capsize=2,
                      label=fr"$\gamma$={gamma:.4f} ($t^2_{{{N}}}$={t2:.3f})")
 
+    if N is None:
+        print("  no results yet, no plot")
+        plt.close()
+        continue
     plt.plot(np.arange(N), ref, "--", color="grey", label=r"Fu et al. $0.5 \pm 0.1$ pN/mono")
     plt.fill_between(np.arange(N), ref - sigma_ref, ref + sigma_ref, color="grey", alpha=0.2)
     plt.xlabel("Monomer index")
