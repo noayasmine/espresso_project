@@ -16,7 +16,7 @@ N_MOV      = 1
 INCLUDE_NS = [10, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200]
 
 SHEARS     = [1818, 2727, 3636, 5455]
-THRESHOLDS = [10.0, 20.0, 30.0]
+THRESHOLDS = [20.0, 30.0]
 
 SHEAR_TO_STRESS = {1818: 200, 2727: 300, 3636: 400, 5455: 600}
 
@@ -29,7 +29,7 @@ COND_STYLE = [
     ("no_selfassociation", COL_B, "s", "no selfassociation"),
 ]
 # threshold -> linestyle
-THR_STYLE = {10.0: "--", 20.0: "-", 30.0: ":"}
+THR_STYLE = {20.0: "-", 30.0: ":"}
 
 XLABEL_SIGMA = r"Polymer surface density $\Sigma$ [$\mu$m$^{-2}$]"
 
@@ -87,7 +87,7 @@ def frac_above_sweep(shear_val, condition):
             for thr in THRESHOLDS}
 
 # ============================================================
-# Plot: 2×2 – fraction above 10/20/30 pN (saturation)
+# Plot: 2×2 – fraction above 20/30 pN (saturation)
 # ============================================================
 
 fig, axes = plt.subplots(2, 2, figsize=(6, 4), sharex=True, sharey=False, dpi=300)
@@ -120,7 +120,7 @@ fig.legend(handles=cond_handles, frameon=False, ncol=2,
 fig.legend(handles=thr_handles, frameon=False, ncol=3,
            loc="upper center", bbox_to_anchor=(0.5, 0.95), fontsize=10)
 fig.tight_layout(rect=[0, 0, 1, 0.88])
-out = os.path.join(RUN_BASE, "frac_monomers_F_gt_10_20_30pN_all_shears_2x2.png")
+out = os.path.join(RUN_BASE, "frac_monomers_F_gt_20_30pN_all_shears_2x2.png")
 fig.savefig(out, dpi=300)
 plt.close(fig)
 print(f"Saved {out}")
