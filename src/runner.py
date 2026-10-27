@@ -604,6 +604,9 @@ def add_timeloops_from_gridsize(config):
 if __name__ == "__main__":
     path = "configs/default.json"
     config = load_config(path)
+    # job scripts using the patched ESPResSo build can set NEARWALL_FIX=true instead of editing default.json
+    if "NEARWALL_FIX" in os.environ:
+        config["simulation"]["NEARWALL_FIX"] = os.environ["NEARWALL_FIX"].lower() == "true"
     run_type = str(sys.argv[1])
 
     if run_type == "test_gridsizes":
