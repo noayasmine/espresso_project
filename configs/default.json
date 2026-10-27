@@ -8,7 +8,7 @@
     "k": 500,
     "d_r_max": 0.12,
     "shift": "auto",
-    "VISC_dyn": 0.11
+    "VISC_dyn": 0.01
   },
   "simulation": {
     "TIME_STEP": 0.001,
@@ -52,7 +52,7 @@
     "AGRID": 1
   },
   "fluid": {
-    "VISC": 1100,
+    "VISC": 100,
     "DENS": 0.0001
   },
   "output": {

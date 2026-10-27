@@ -658,7 +658,7 @@ if __name__ == "__main__":
             # set run_id as seed
             config["simulation"]["SEED"] = run
             config["simulation"]["COMPUTE_POSITIONS"] = False
-            config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}/run_{run}/"
+            config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(round(gamma*1e4)):05d}/shear_{int(shear):05d}/run_{run}/"
 
         if len(sys.argv) == 6:
             shear = float(sys.argv[2])
@@ -669,7 +669,7 @@ if __name__ == "__main__":
             config["simulation"]["SAVE_VTK"] = True
             config["simulation"]["SEED"] = 1
             config["simulation"]["TOTAL_TIME"] = 0.3
-            config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}/"
+            config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(round(gamma*1e4)):05d}/shear_{int(shear):05d}/"
         
         # set parameters to match the validation data from Fu et al.
         config["simulation"]["SHEAR"] = shear
@@ -745,7 +745,7 @@ if __name__ == "__main__":
         
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
-        config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/shear_{int(shear):05d}/run_{run}"
+        config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(round(gamma*1e4)):05d}/shear_{int(shear):05d}/run_{run}"
         add_polymer_positions(config)
 
     if run_type == "validation_coiling":
@@ -757,7 +757,7 @@ if __name__ == "__main__":
             # set run id as random seed
             gamma = config["physical"]["GAMMA"]
             config["simulation"]["SEED"] = run
-            config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/run_{run}/"
+            config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(round(gamma*1e4)):05d}/run_{run}/"
 
         if len(sys.argv) == 7:
             gamma = float(sys.argv[2])
@@ -767,7 +767,7 @@ if __name__ == "__main__":
             save_dir = str(sys.argv[6])
             config["simulation"]["stdev_initial_pos"] = stdev_init
             # config["simulation"]["SAVE_VTK"] = True
-            config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(gamma*1e4):05d}/"
+            config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(round(gamma*1e4)):05d}/"
 
         config["simulation"]["COILED"] = False
         # for recoiling, the experimental data added 60% sucrose, increased viscosity and density
