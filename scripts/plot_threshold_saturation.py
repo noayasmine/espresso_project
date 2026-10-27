@@ -30,6 +30,10 @@ COND_STYLE = [
 ]
 # threshold -> linestyle
 THR_STYLE = {20.0: "-", 30.0: ":"}
+# thresholds drawn with open markers
+OPEN_MARKER_THRS = [30.0]
+# appended to the output filename, so style variants don't overwrite each other
+OUT_SUFFIX = "_openmarkers"
 
 XLABEL_SIGMA = r"Polymer surface density $\Sigma$ [$\mu$m$^{-2}$]"
 
@@ -99,8 +103,9 @@ for ax, sh in zip(axes, SHEARS):
             dens, means, stds = sweep[thr]
             if len(dens) == 0:
                 continue
+            mfc = "white" if thr in OPEN_MARKER_THRS else color
             ax.errorbar(dens, means, yerr=stds, fmt=marker, ls=THR_STYLE[thr], lw=2.0, ms=5,
-                        capsize=3, color=color, alpha=ALPHA)
+                        capsize=3, color=color, mfc=mfc, alpha=ALPHA)
 
     ax_r = ax.twinx()
     ax_r.set_yticks([])
@@ -113,14 +118,15 @@ for ax, sh in zip(axes, SHEARS):
 fig.supxlabel(XLABEL_SIGMA)
 fig.supylabel(r"Monomer fraction with $F > F_\mathrm{thr}$")
 cond_handles = [Line2D([], [], color=c, marker=m, lw=2, label=l) for _, c, m, l in COND_STYLE]
-thr_handles = [Line2D([], [], color="gray", ls=THR_STYLE[t], lw=2,
+thr_handles = [Line2D([], [], color="gray", ls=THR_STYLE[t], lw=2, marker="o",
+                      mfc="white" if t in OPEN_MARKER_THRS else "gray",
                       label=fr"$F_\mathrm{{thr}} = {int(t)}$ pN") for t in THRESHOLDS]
 fig.legend(handles=cond_handles, frameon=False, ncol=2,
            loc="upper center", bbox_to_anchor=(0.5, 1.0), fontsize=10)
 fig.legend(handles=thr_handles, frameon=False, ncol=3,
            loc="upper center", bbox_to_anchor=(0.5, 0.95), fontsize=10)
 fig.tight_layout(rect=[0, 0, 1, 0.88])
-out = os.path.join(RUN_BASE, "frac_monomers_F_gt_20_30pN_all_shears_2x2.png")
+out = os.path.join(RUN_BASE, f"frac_monomers_F_gt_20_30pN_all_shears_2x2{OUT_SUFFIX}.png")
 fig.savefig(out, dpi=300)
 plt.close(fig)
 print(f"Saved {out}")
