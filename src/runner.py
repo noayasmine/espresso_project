@@ -692,6 +692,20 @@ if __name__ == "__main__":
         if config["physical"]["N_MONOMERS"] == 50:
             config["simulation"]["MINIMIZATION_STEPS"] = 200
 
+        # optional overrides for calibration tests (unset = behaviour above unchanged)
+        if "FENE_K" in os.environ:
+            config["physical"]["k"] = float(os.environ["FENE_K"])
+        if "LB_TIME_STEP" in os.environ:
+            config["simulation"]["LB_TIME_STEP"] = float(os.environ["LB_TIME_STEP"])
+        if "TIME_STEP" in os.environ:
+            # keep the saving interval in physical time the same (STEPS * TIME_STEP)
+            dt_old = config["simulation"]["TIME_STEP"]
+            config["simulation"]["TIME_STEP"] = float(os.environ["TIME_STEP"])
+            config["simulation"]["STEPS"] = int(round(config["simulation"]["STEPS"] * dt_old / config["simulation"]["TIME_STEP"]))
+        print(f"validation_uncoiling: N={config['physical']['N_MONOMERS']}, k={config['physical']['k']}, "
+                     f"TIME_STEP={config['simulation']['TIME_STEP']}, LB_TIME_STEP={config['simulation']['LB_TIME_STEP']}, "
+                     f"STEPS={config['simulation']['STEPS']}")
+
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
         add_polymer_positions(config)
