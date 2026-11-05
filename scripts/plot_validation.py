@@ -67,7 +67,7 @@ def plot_validation_results(config, base_dir, validation_type="free", Box_Lx=Non
     plt.style.use("seaborn-v0_8-whitegrid")
     color_cycle = plt.get_cmap("Dark2").colors
 
-    dyn_visc_SI = config["physical"]["VISC_dyn"] / 10
+    visc_poise = config["fluid"]["VISC"] * config["fluid"]["DENS"]  # dynamic viscosity [P]; tau [dyn/cm2] = shear [1/s] * eta [P]
 
     geom = config.get("geometry", {})
     Lx_eff = Box_Lx if Box_Lx is not None else geom.get("BOX_Lx", None)
@@ -122,7 +122,7 @@ def plot_validation_results(config, base_dir, validation_type="free", Box_Lx=Non
             finals = np.asarray(finals, float)
             Lmax_gamma = finals.max() if Lmax_gamma is None else max(Lmax_gamma, finals.max())
 
-            tau_wall = shear_rate * dyn_visc_SI * 10
+            tau_wall = shear_rate * visc_poise
             shears.append(tau_wall)
             means.append(finals.mean())
             stds.append(finals.std())
@@ -156,7 +156,7 @@ def plot_validation_results(config, base_dir, validation_type="free", Box_Lx=Non
         ax.fill_between(expected_x, expected_y - expected_std, expected_y + expected_std, color="black", alpha=0.12, linewidth=0)
 
     if str(validation_type).lower() == "free":
-        expected_x = np.array([1, 10, 100, 400, 1100, 5000, 10000], float) * dyn_visc_SI * 10
+        expected_x = np.array([1, 10, 100, 400, 1100, 5000, 10000], float) * visc_poise
         expected_y = np.array([0, 0, 0, 0, 0, 0.75, 1], float)
         expected_std = np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.2, 0.2], float)
         ax.plot(expected_x, expected_y, linestyle="--", color="black", linewidth=2, marker="s", markersize=5, label="Schneider et al.")
@@ -224,7 +224,7 @@ def plot_time_series(config, base_dir, plot_type, validation_type="free", Box_Lx
 
             t = np.arange(len(y)) * dt
             shear_rate = int(sd.split("_")[1])
-            shear_stress_int = round(int(shear_rate * 0.11), -1)
+            shear_stress_int = int(round(shear_rate * config["fluid"]["VISC"] * config["fluid"]["DENS"]))
             lbl = r"$\tau=$" + f" {shear_stress_int} " + r"dyn cm$^{-2}$"
             ax.plot(t, y, lw=1.5, color=colors[i % len(colors)], label=lbl)
 
@@ -301,7 +301,7 @@ def plot_tethered_across_LJ_for_gamma(config, base_dir, target_gamma, anchor=0, 
     plt.style.use("seaborn-v0_8-whitegrid")
     colors = plt.get_cmap("Dark2").colors
 
-    dyn_visc_SI = config["physical"]["VISC_dyn"] / 10.0
+    visc_poise = config["fluid"]["VISC"] * config["fluid"]["DENS"]  # dynamic viscosity [P]
 
     exp_x = np.array([0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1280], float)
     exp_y = np.array([0.00, 0.35, 0.55, 0.63, 0.70, 0.75, 0.81, 0.85, 0.90, 0.92, 0.94, 0.96, 0.96, 0.96], float)
@@ -350,7 +350,7 @@ def plot_tethered_across_LJ_for_gamma(config, base_dir, target_gamma, anchor=0, 
 
         for sd in shear_dirs:
             shear_int = int(sd.split("_")[1])
-            tau = shear_int * dyn_visc_SI * 10.0
+            tau = shear_int * visc_poise
             sdir = os.path.join(gpath, sd)
 
             run_dirs = sorted([d for d in os.listdir(sdir) if re.match(r"^run_\d+$", d)])

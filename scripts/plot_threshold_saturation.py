@@ -1,4 +1,5 @@
 import os
+import json
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
@@ -18,7 +19,11 @@ INCLUDE_NS = [10, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200]
 SHEARS     = [1818, 2727, 3636, 5455]
 THRESHOLDS = [20.0, 30.0]
 
-SHEAR_TO_STRESS = {1818: 200, 2727: 300, 3636: 400, 5455: 600}
+# wall shear stress tau [dyn/cm2] = shear rate [1/s] * dynamic viscosity [P], with eta = VISC * DENS from the config
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "configs", "default.json")) as _f:
+    _fluid = json.load(_f)["fluid"]
+ETA_POISE = _fluid["VISC"] * _fluid["DENS"]
+SHEAR_TO_STRESS = {sh: int(round(sh * ETA_POISE)) for sh in (1818, 2727, 3636, 5455)}
 
 COL_A = "purple"      # selfassociation
 COL_B = "cadetblue"   # no selfassociation

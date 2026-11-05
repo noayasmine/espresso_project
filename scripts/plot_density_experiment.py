@@ -1,6 +1,7 @@
 
 
 import os
+import json
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -37,14 +38,11 @@ SHEARS_TO_INCLUDE = [1454, 1818, 2727, 3636, 5455]  # 2x2 by default; add more a
 # ----------------------------
 # shear → wall shear stress mapping (dyn/cm^2)
 # ----------------------------
-SHEAR_TO_STRESS = {
-    1454: 160,
-    2091: 230,
-    1818: 200,
-    2727: 300,
-    3636: 400,
-    5455: 600,
-}
+# wall shear stress tau [dyn/cm2] = shear rate [1/s] * dynamic viscosity [P], with eta = VISC * DENS from the config
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "configs", "default.json")) as _f:
+    _fluid = json.load(_f)["fluid"]
+ETA_POISE = _fluid["VISC"] * _fluid["DENS"]
+SHEAR_TO_STRESS = {sh: int(round(sh * ETA_POISE)) for sh in (1454, 2091, 1818, 2727, 3636, 5455)}
 
 # ----------------------------
 # colors / style

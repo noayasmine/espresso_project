@@ -773,9 +773,11 @@ if __name__ == "__main__":
             config["output"]["DIRECTORY"] = f"./{save_dir}/LJ_{int(LJ_strength*1e2):05d}/gamma_{int(round(gamma*1e4)):05d}/"
 
         config["simulation"]["COILED"] = False
-        # for recoiling, the experimental data added 60% sucrose, increased viscosity and density
-        config["fluid"]["VISC"] = config["fluid"]["VISC"] * 58
+        # for recoiling, Fu et al. added 60% sucrose: dynamic viscosity 58x the buffer (58 cP) and density 1.3 g/cm3
+        # VISC is kinematic, so keep eta = VISC * DENS at 58x the buffer value when DENS changes
+        eta_buffer = config["fluid"]["VISC"] * config["fluid"]["DENS"]
         config["fluid"]["DENS"] = 0.00013
+        config["fluid"]["VISC"] = 58 * eta_buffer / config["fluid"]["DENS"]
         config["geometry"]["AGRID"] = 1
         config["simulation"]["N_POLYMERS"] = 1
         config["simulation"]["TOTAL_TIME"] = 0.8
