@@ -25,6 +25,7 @@ avg_window = 20       # trailing moving average over saved points
 time_avg_steps = 100  # average over the last saved points
 ref_per_mono, sigma_per_mono = 0.5, 0.1  # Fu et al. [pN per monomer]
 unstable_drag = 100.0  # [pN] runs with a drag spike above this are reported and left out of the average
+max_tether = 70.0      # [pN] gammas whose mean tether force exceeds this are left out of all plots (None = keep all)
 
 
 def moving_average_trailing_matrix(x, window):
@@ -87,6 +88,9 @@ for mass, (base_dirs, gamma_max) in mass_sets.items():
             cum = tensile_profiles(by_gamma[gamma])
             if cum is None:
                 print("  no stable runs")
+                continue
+            if max_tether is not None and cum.mean(axis=0)[0] > max_tether:
+                print(f"  left out: mean tether force {cum.mean(axis=0)[0]:.1f} pN > {max_tether:g} pN")
                 continue
             N = cum.shape[1]
             steps = N - np.arange(N)
