@@ -781,6 +781,9 @@ if __name__ == "__main__":
         add_polymer_positions(config)
 
     if run_type == "validation_coiling":
+        # GAMMA, MASS, TIME_STEP, ... from the environment; VISC/DENS (if given) are the buffer values, the sucrose
+        # factors below are applied on top of them
+        apply_env_overrides(config, run_type)
         if len(sys.argv) == 6:
             LJ_strength = float(sys.argv[2])
             N_monomers = int(sys.argv[3])
@@ -809,8 +812,11 @@ if __name__ == "__main__":
         config["fluid"]["VISC"] = 58 * eta_buffer / config["fluid"]["DENS"]
         config["geometry"]["AGRID"] = 1
         config["simulation"]["N_POLYMERS"] = 1
-        config["simulation"]["TOTAL_TIME"] = 0.8
+        config["simulation"]["TOTAL_TIME"] = float(os.environ.get("TOTAL_TIME", 0.8))
         config["simulation"]["MINIMIZATION_STEPS"] = 0
+        print(f"validation_coiling: N={N_monomers}, GAMMA={config['physical']['GAMMA']}, k={config['physical']['k']}, "
+              f"VISC={config['fluid']['VISC']}, DENS={config['fluid']['DENS']}, "
+              f"eta={config['fluid']['VISC'] * config['fluid']['DENS']}, TOTAL_TIME={config['simulation']['TOTAL_TIME']}")
         config["physical"]["N_MONOMERS"] = N_monomers
 
         add_timeloops_from_gridsize(config)
