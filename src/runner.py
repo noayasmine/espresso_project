@@ -702,9 +702,18 @@ if __name__ == "__main__":
             dt_old = config["simulation"]["TIME_STEP"]
             config["simulation"]["TIME_STEP"] = float(os.environ["TIME_STEP"])
             config["simulation"]["STEPS"] = int(round(config["simulation"]["STEPS"] * dt_old / config["simulation"]["TIME_STEP"]))
+        if "STEPS" in os.environ:
+            config["simulation"]["STEPS"] = int(os.environ["STEPS"])
+        if "TOTAL_TIME" in os.environ:
+            config["simulation"]["TOTAL_TIME"] = float(os.environ["TOTAL_TIME"])
+        if "VISC" in os.environ:
+            config["fluid"]["VISC"] = float(os.environ["VISC"])
+        if "DENS" in os.environ:
+            config["fluid"]["DENS"] = float(os.environ["DENS"])
         print(f"validation_uncoiling: N={config['physical']['N_MONOMERS']}, k={config['physical']['k']}, "
                      f"TIME_STEP={config['simulation']['TIME_STEP']}, LB_TIME_STEP={config['simulation']['LB_TIME_STEP']}, "
-                     f"STEPS={config['simulation']['STEPS']}")
+                     f"STEPS={config['simulation']['STEPS']}, TOTAL_TIME={config['simulation']['TOTAL_TIME']}, "
+                     f"VISC={config['fluid']['VISC']}, DENS={config['fluid']['DENS']}")
 
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
