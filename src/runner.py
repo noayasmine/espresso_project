@@ -584,6 +584,33 @@ def add_polymer_positions(config):
         load_polymer_positions(start_positions, config)
     
 
+def apply_env_overrides(config, run_type):
+    """Optional environment overrides for calibration and rescaled runs; unset leaves the config unchanged.
+    TIME_STEP rescales STEPS so the saving interval in physical time stays the same, unless STEPS is given."""
+    if "GAMMA" in os.environ:
+        config["physical"]["GAMMA"] = float(os.environ["GAMMA"])
+    if "FENE_K" in os.environ:
+        config["physical"]["k"] = float(os.environ["FENE_K"])
+    if "LB_TIME_STEP" in os.environ:
+        config["simulation"]["LB_TIME_STEP"] = float(os.environ["LB_TIME_STEP"])
+    if "TIME_STEP" in os.environ:
+        dt_old = config["simulation"]["TIME_STEP"]
+        config["simulation"]["TIME_STEP"] = float(os.environ["TIME_STEP"])
+        config["simulation"]["STEPS"] = int(round(config["simulation"]["STEPS"] * dt_old / config["simulation"]["TIME_STEP"]))
+    if "STEPS" in os.environ:
+        config["simulation"]["STEPS"] = int(os.environ["STEPS"])
+    if "TOTAL_TIME" in os.environ:
+        config["simulation"]["TOTAL_TIME"] = float(os.environ["TOTAL_TIME"])
+    if "VISC" in os.environ:
+        config["fluid"]["VISC"] = float(os.environ["VISC"])
+    if "DENS" in os.environ:
+        config["fluid"]["DENS"] = float(os.environ["DENS"])
+    print(f"{run_type}: N={config['physical']['N_MONOMERS']}, k={config['physical']['k']}, GAMMA={config['physical']['GAMMA']}, "
+          f"TIME_STEP={config['simulation']['TIME_STEP']}, LB_TIME_STEP={config['simulation']['LB_TIME_STEP']}, "
+          f"STEPS={config['simulation']['STEPS']}, TOTAL_TIME={config['simulation']['TOTAL_TIME']}, "
+          f"VISC={config['fluid']['VISC']}, DENS={config['fluid']['DENS']}")
+
+
 def add_timeloops_from_gridsize(config):
     """ Calculate number of loops for specified number of 
     steps and total time (in seconds)
@@ -692,28 +719,7 @@ if __name__ == "__main__":
         if config["physical"]["N_MONOMERS"] == 50:
             config["simulation"]["MINIMIZATION_STEPS"] = 200
 
-        # optional overrides for calibration tests (unset = behaviour above unchanged)
-        if "FENE_K" in os.environ:
-            config["physical"]["k"] = float(os.environ["FENE_K"])
-        if "LB_TIME_STEP" in os.environ:
-            config["simulation"]["LB_TIME_STEP"] = float(os.environ["LB_TIME_STEP"])
-        if "TIME_STEP" in os.environ:
-            # keep the saving interval in physical time the same (STEPS * TIME_STEP)
-            dt_old = config["simulation"]["TIME_STEP"]
-            config["simulation"]["TIME_STEP"] = float(os.environ["TIME_STEP"])
-            config["simulation"]["STEPS"] = int(round(config["simulation"]["STEPS"] * dt_old / config["simulation"]["TIME_STEP"]))
-        if "STEPS" in os.environ:
-            config["simulation"]["STEPS"] = int(os.environ["STEPS"])
-        if "TOTAL_TIME" in os.environ:
-            config["simulation"]["TOTAL_TIME"] = float(os.environ["TOTAL_TIME"])
-        if "VISC" in os.environ:
-            config["fluid"]["VISC"] = float(os.environ["VISC"])
-        if "DENS" in os.environ:
-            config["fluid"]["DENS"] = float(os.environ["DENS"])
-        print(f"validation_uncoiling: N={config['physical']['N_MONOMERS']}, k={config['physical']['k']}, "
-                     f"TIME_STEP={config['simulation']['TIME_STEP']}, LB_TIME_STEP={config['simulation']['LB_TIME_STEP']}, "
-                     f"STEPS={config['simulation']['STEPS']}, TOTAL_TIME={config['simulation']['TOTAL_TIME']}, "
-                     f"VISC={config['fluid']['VISC']}, DENS={config['fluid']['DENS']}")
+        apply_env_overrides(config, run_type)
 
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config, LJ_strength)
@@ -934,10 +940,12 @@ if __name__ == "__main__":
         config["simulation"]["LB_TIME_STEP"] = 0.001
         config["simulation"]["TIME_STEP"] = 0.001
 
+        apply_env_overrides(config, run_type)
+
         add_timeloops_from_gridsize(config)
         add_dependent_parameters(config)
         add_polymer_positions(config)
-    
+
     if run_type == "experiment_sphere":
         shear = float(sys.argv[2])
         config["simulation"]["SELF_ASSOCIATE"] = sys.argv[3].lower() == "true"
